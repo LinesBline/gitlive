@@ -1,0 +1,14 @@
+node_modules/
+*.tgz
+tests/tmp-*
+.DS_Store
+# local dev artifacts that must not ship
+dashboard-empty.png
+dashboard-logged-in.png
+*.zip
+copy
+site/dashboard-empty.png
+packaging/*.tgz
+.gitlive/
+events.log
+gitlive-hello/

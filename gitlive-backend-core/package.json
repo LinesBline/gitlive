@@ -1,0 +1,12 @@
+{
+  "name": "gitlive-backend-core",
+  "version": "0.1.0",
+  "description": "Shared db/auth/storage implementation for the gitlive backend layer. Transport-agnostic: called in-process by gitlive-client's standalone mode, and dispatched into by gitlive-backend's daemon mode. Node built-ins only.",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {}
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gitlive — your push, your hardware, no chokepoint</title>
+<style>
+  :root{
+    --bg0:#04060b; --txt:#dbe6f5; --dim:#7f8ea8; --faint:#47536e;
+    --cy:#4dd7fe; --vio:#8f7bff; --mint:#3ef2b0;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(900px 500px at 85% -10%, rgba(143,123,255,.10), transparent 60%),radial-gradient(800px 460px at -10% 110%, rgba(77,215,254,.08), transparent 60%),var(--bg0);color:var(--txt);font-family:var(--mono);line-height:1.6}
+  main{max-width:880px;margin:0 auto;padding:72px 24px 110px}
+  .word{font-size:13px;letter-spacing:3px;color:var(--faint);text-transform:uppercase}
+  .word b{color:var(--cy);font-weight:600}
+  h1{font-size:clamp(30px,6vw,52px);line-height:1.1;margin:18px 0 10px;font-weight:600}
+  h1 .mint{color:var(--mint)}
+  h1 .vio{color:var(--vio)}
+  .lede{color:var(--dim);font-size:17px;max-width:640px;margin:0 0 34px}
+  .cta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:60px}
+  code{background:#0b101c;border:1px solid rgba(125,160,255,.2);border-radius:8px;padding:12px 18px;font-size:14px;color:#eaf2ff}
+  .try{display:inline-block;border:1px solid rgba(77,215,254,.45);color:var(--cy);border-radius:8px;padding:12px 22px;text-decoration:none}
+  .try:hover{background:rgba(77,215,254,.08)}
+  h2{font-size:12px;letter-spacing:2.4px;text-transform:uppercase;color:var(--faint);margin:44px 0 16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  .card{border:1px solid rgba(125,160,255,.14);border-radius:12px;padding:18px;background:rgba(11,16,28,.55)}
+  .card b{color:var(--mint);font-weight:600}
+  .card .k{color:var(--cy);font-size:11px;letter-spacing:1.6px;text-transform:uppercase;display:block;margin-bottom:6px}
+  ul{padding-left:18px}
+  li{margin:6px 0;color:var(--dim)}
+  li b{color:var(--txt)}
+  .foot{margin-top:70px;color:var(--faint);font-size:12px;border-top:1px solid rgba(125,160,255,.1);padding-top:18px}
+</style>
+</head>
+<body>
+<main>
+  <div class="word">git<b>live</b> · self-sovereign deploy mesh</div>
+  <h1>Your push. Your hardware.<br><span class="mint">No chokepoint.</span></h1>
+  <p class="lede">git push → live, on machines you own. Auth, database, storage and
+  deploys included — no platform, no success-tax.
+  Built for the apps serverless priced out: media, AI, stateful, long-running.</p>
+  <div class="cta">
+    <code>npm install -g gitlive</code>
+    <a class="try" href="#how">try it →</a>
+  </div>
+
+  <h2 id="how">One command, in your repo</h2>
+  <div class="grid">
+    <div class="card"><span class="k">deploy</span><code style="border:none;padding:0;background:none">git push main</code>
+      <p style="color:var(--dim);font-size:13px">A bare repo on your machine checks out, installs and runs it. Blue-green safe mode with health checks optional.</p></div>
+    <div class="card"><span class="k">backend included</span><code style="border:none;padding:0;background:none">gitlive-client</code>
+      <p style="color:var(--dim);font-size:13px">Per-app SQLite, auth with scrypt sessions, file storage — zero rented BaaS. One import, zero npm dependencies.</p></div>
+    <div class="card"><span class="k">survives</span><code style="border:none;padding:0;background:none">gitlive mesh deploy</code>
+      <p style="color:var(--dim);font-size:13px">One push to N nodes. A machine dies → promote a replica; state follows the owner-signed primary. Nothing silent gets lost — conflicts are logged.</p></div>
+    <div class="card"><span class="k">yours</span><code style="border:none;padding:0;background:none">owner-signed</code>
+      <p style="color:var(--dim);font-size:13px">Every deploy carries your Ed25519 signature; unsigned drift is rejected at push time. Data at rest is encryptable with your key, split N-of-T.</p></div>
+  </div>
+
+  <h2>What gitlive is — and is not</h2>
+  <ul>
+    <li><b>Is:</b> a resilience system. No company, registry, or government that pressures one of them can kill your project by taking down one thing.</li>
+    <li><b>Is not:</b> an anonymity system, and not an escape hatch from the law. Hardening phases are explicit; nothing claims anti-takedown before they ship.</li>
+    <li><b>Honest status:</b> deploys, backend layer, repo-as-storage, mesh deploy + failover, control-plane dashboard — working and test-green today. Federation protocol, at-rest encryption policies, public onboarding — in active build (DESIGN.md in the repo is the source of truth).</li>
+  </ul>
+
+  <h2>Try it</h2>
+  <div class="card" style="margin-bottom:14px"><code style="border:none;padding:0;background:none">cd your-project<br>gitlive init<br>git push main</code></div>
+  <div class="card"><code style="border:none;padding:0;background:none">gitlive serve&nbsp;&nbsp;# control-plane dashboard, one tab</code>
+    <p style="color:var(--dim);font-size:13px">Every project on this machine: status, logs, deploy, rollback, replicas, conflict ledger.</p></div>
+
+  <div class="foot">gitlive · zero runtime dependencies · Node built-ins only · AGPL-3.0-or-later · github.com/LinesBline/gitlive</div>
+</main>
+</body>
+</html>

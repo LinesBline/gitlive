@@ -1,0 +1,17 @@
+{
+  "name": "gitlive-mcp",
+  "version": "1.0.0",
+  "description": "MCP server wrapping gitlive's commands (deploy/status/logs/stop/rollback/doctor) as tool calls.",
+  "main": "server.js",
+  "bin": {
+    "gitlive-mcp": "./server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.0"
+  },
+  "license": "MIT"
+}

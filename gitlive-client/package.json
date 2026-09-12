@@ -1,0 +1,11 @@
+{
+  "name": "gitlive-client",
+  "version": "0.1.0",
+  "description": "What an app fused with gitlive actually imports. One db/auth/storage API; auto-detects a running gitlive-backend daemon and falls back to a standalone per-app SQLite file when none is running. Requires gitlive-backend-core as a sibling folder (no npm install needed — both are Node built-ins only, required by relative path).",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

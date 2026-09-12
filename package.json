@@ -1,0 +1,52 @@
+{
+  "name": "gitlive",
+  "version": "2.6.2",
+  "description": "Turn any git repo into a live running process with \"git push\" \u2014 no PaaS, no BaaS. Auth, SQLite and file storage for apps via gitlive-client; GitHub-repo-as-storage mode; owner-signed manifests; control-plane dashboard. Zero runtime dependencies (Node built-ins only).",
+  "bin": {
+    "gitlive": "gitlive.js"
+  },
+  "main": "gitlive.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "deploy",
+    "self-hosted",
+    "git",
+    "paas",
+    "homelab",
+    "github-actions"
+  ],
+  "files": [
+    "gitlive.js",
+    "acme.js",
+    "attest.js",
+    "backend.js",
+    "backup.js",
+    "entry.js",
+    "github-hook.js",
+    "heartbeat.js",
+    "manifest.js",
+    "gitlive-backend-core/",
+    "gitlive-client/",
+    "control/",
+    "docs/",
+    "README.md",
+    "WORKFLOW.md",
+    "DESIGN.md",
+    "SECURITY.md",
+    "LICENSE",
+    "mesh.js",
+    "daemon.js",
+    "peer.js",
+    "keys.js",
+    "crypt.js",
+    "CHANGELOG.md",
+    "INTEGRITY.json"
+  ],
+  "scripts": {
+    "test": "bash scripts/release.sh",
+    "release": "bash scripts/release.sh"
+  }
+}
