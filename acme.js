@@ -55,6 +55,16 @@ const providers = {
       await fetchImpl(url, { method: 'DELETE', headers: { Authorization: `Token ${token}` } }).catch(() => {});
       return true;
     },
+    // read-back (diagnose chain): what does the zone actually answer?
+    // { exists: false } = no rrset; { exists: true, values: [...] } = live truth
+    async getRecord({ token, zone, subname, type, fetchImpl }) {
+      const url = `${process.env.GITLIVE_DESEC_API || 'https://desec.io/api/v1'}/domains/${zone}/rrsets/${subname}/${type}/`;
+      const r = await fetchImpl(url, { method: 'GET', headers: { Authorization: `Token ${token}` } });
+      if (r.status === 404) return { exists: false };
+      if (!r.ok) throw new Error(`deSEC read refused: ${r.status}`);
+      const d = await r.json();
+      return { exists: true, values: d.records || [] };
+    },
     async createTxt({ token, zone, record, value, fetchImpl }) {
       const url = `${process.env.GITLIVE_DESEC_API || 'https://desec.io/api/v1'}/domains/${zone}/rrsets/${record}/TXT/`;
       const r = await fetchImpl(url, {

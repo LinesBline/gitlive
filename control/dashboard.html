@@ -7,33 +7,37 @@
 <!-- fonts are SELF-HOSTED (bundled, OFL): zero external requests, zero third-party
      pixels — the dashboard leaks nothing to font CDNs by existing -->
 <style>
-@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:300 700;font-display:swap;src:url('/fonts/spacegrotesk-var.woff2') format('woff2')}
-@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('/fonts/jetbrainsmono-var.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:100 700;font-display:swap;src:url('/fonts/plexsans-var.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/plexmono-400.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500 600;font-display:swap;src:url('/fonts/plexmono-600.woff2') format('woff2')}
 </style>
 <style>
 :root{
-  /* core palette — aurora (ops, refined) */
-  --bg0:#05070d; --bg1:#0a0e19;
-  --panel:rgba(13,18,32,.66); --panel2:rgba(17,24,42,.88);
-  --line:rgba(140,170,255,.10); --line2:rgba(140,170,255,.20);
-  --txt:#e9f1ff; --dim:#8fa1bf; --faint:#55648a;
-  --cy:#5fd6ff; --vio:#a78bfa; --mint:#3ee6a8; --warn:#ffc857; --bad:#ff6b81;
-  --glow-cy:0 0 14px rgba(95,214,255,.32); --glow-mint:0 0 14px rgba(62,230,168,.30);
-  --mono:'JetBrains Mono',ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
-  --disp:'Space Grotesk',-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;
-  --sans:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,Inter,sans-serif;
+  /* — FIELD INSTRUMENT — warm neutrals, one signal colour, no glass, no
+     gradients: equipment, not a landing page. (ECC design-system pass:
+     the old cyan→violet aurora hit every "AI slop" marker — purple default,
+     gratuitous gradients, decorative glass.) */
+  --bg0:#0c0c0e; --bg1:#121215;
+  --panel:#141418; --panel2:#1a1a1f;
+  --line:rgba(255,255,255,.09); --line2:rgba(255,255,255,.17);
+  --txt:#f0efe9; --dim:#a5a49c; --faint:#84837c;
+  --cy:#f5a524; --vio:#6ea8d8; --mint:#5cc98d; --warn:#e8b33a; --bad:#e5564f;
+  --glow-cy:0 0 0 1px rgba(245,165,36,.35); --glow-mint:0 0 0 1px rgba(92,201,141,.35);
+  --mono:'IBM Plex Mono',ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
+  --disp:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif;
   /* derived surfaces (color-mix keeps the 9 custom tokens fully functional) */
-  --glass:color-mix(in srgb, var(--cy) 5%, rgba(9,13,24,.72));
-  --glass2:color-mix(in srgb, var(--cy) 8%, rgba(14,20,36,.9));
-  --edge:color-mix(in srgb, var(--cy) 16%, transparent);
-  --edge-vio:color-mix(in srgb, var(--vio) 20%, transparent);
-  --accent-grad:linear-gradient(120deg, color-mix(in srgb, var(--cy) 85%, #fff 8%), var(--vio));
-  --accent-grad-soft:linear-gradient(120deg, color-mix(in srgb, var(--cy) 16%, transparent), color-mix(in srgb, var(--vio) 16%, transparent));
-  --text-strong:#f4f9ff;
-  --ring:color-mix(in srgb, var(--cy) 55%, transparent);
-  --shadow:0 12px 40px rgba(2,4,10,.5);
-  --shadow-lg:0 24px 80px rgba(2,4,10,.65);
-  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:22px;
+  --glass:var(--panel);
+  --glass2:var(--panel2);
+  --edge:color-mix(in srgb, var(--cy) 22%, transparent);
+  --edge-vio:color-mix(in srgb, var(--vio) 22%, transparent);
+  --accent-grad:var(--cy);
+  --accent-grad-soft:color-mix(in srgb, var(--cy) 10%, transparent);
+  --text-strong:#fbfaf6;
+  --ring:color-mix(in srgb, var(--cy) 70%, transparent);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.32);
+  --shadow-lg:0 2px 4px rgba(0,0,0,.45), 0 20px 48px rgba(0,0,0,.5);
+  --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:12px;
   --ease:cubic-bezier(.22,1,.36,1);
   --dur:.28s;
 }
@@ -66,6 +70,11 @@ body::after{
 ::-webkit-scrollbar-thumb{background:color-mix(in srgb, var(--cy) 22%, transparent);border-radius:6px;border:2px solid transparent;background-clip:content-box}
 ::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb, var(--cy) 38%, transparent)}
 ::-webkit-scrollbar-track{background:transparent}
+/* compact scrollable windows: long lists live in a small pane, click to
+   inspect — the page stays a cockpit, not a scroll marathon */
+.scrollwin{max-height:240px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px 12px;background:rgba(8,12,22,.45);scrollbar-width:thin}
+.scrollwin::-webkit-scrollbar{width:7px}
+.scrollwin .ev-row:last-child{border-bottom:none}
 a{color:var(--cy);text-decoration:none;transition:color var(--dur) var(--ease)}
 a:hover{color:color-mix(in srgb, var(--cy) 80%, #fff)}
 .hidden{display:none!important}
@@ -91,6 +100,38 @@ a:hover{color:color-mix(in srgb, var(--cy) 80%, #fff)}
 }
 .card.danger-edge::before{background:linear-gradient(90deg,transparent,color-mix(in srgb, var(--bad) 45%, transparent),transparent)}
 .card{animation:risein .5s var(--ease) both}
+/* design pass: ONE title system across the cockpit — the machine doc mixed
+   26px h1s with 12px uppercase h2s side by side; now every card title is a
+   single readable scale under its kicker */
+.msection h1,.card h2{font-size:16px;line-height:1.25;margin:0 0 2px;text-transform:none;letter-spacing:-.01em;color:var(--text-strong);font-weight:600;font-family:var(--disp)}
+.kicker{margin-bottom:6px}
+/* the dense-quiet pass: less air, tighter rows — a cockpit, not a brochure */
+.card{padding:18px 20px;margin-bottom:14px}
+.msection .card{margin-bottom:12px}
+.kvrow{padding:6px 2px}
+.crsect{padding:12px 0}
+.muted{line-height:1.45}
+.mini-btn{margin:0}
+.mini-btn:hover{border-color:var(--cy);color:var(--cy);box-shadow:var(--glow-cy)}
+/* ── FIELD INSTRUMENT · surface rules (ECC make-interfaces-feel-better) ── */
+.card,.notifys,.topbar,header{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+.card{background:var(--panel);border-color:var(--line);box-shadow:var(--shadow)}
+.card::before{opacity:.35;background:linear-gradient(90deg,transparent,var(--edge),transparent)}
+h1,h2,.word,.detail-hero h1{text-wrap:balance}
+.muted,.crd,.subline,.ndet,.why,.lead-sub{text-wrap:pretty}
+.herostat .num,.num,.ago,.railsync,.clock,.mono,.kvrow .v{font-variant-numeric:tabular-nums}
+.btn,.mini-btn,.chip,.railseg,.appcard{transition-property:transform,background-color,border-color,box-shadow,color;transition-duration:.15s;transition-timing-function:cubic-bezier(.2,.8,.2,1)}
+.btn:active,.mini-btn:active{transform:scale(.97)}
+.mini-btn,.gear,.hudbtn{min-height:28px}
+.railseg,.chips .chip{cursor:pointer}
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+.guidestrip{border-left:3px solid var(--cy);padding:14px 16px;margin:0 0 12px;
+  background:linear-gradient(180deg, color-mix(in srgb, var(--cy) 7%, var(--bg0)), var(--bg0))}
+.guidestrip .kvrow{border-bottom-color:color-mix(in srgb, var(--cy) 16%, transparent)}
+.railseg .railval{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.herostat{flex:1 1 130px;min-width:0}
+.herostat .num{font-size:21px}
+.nchip{padding:5px 12px;font-size:10.5px}
 @keyframes risein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 h1,h2{font-family:var(--disp);font-weight:600;letter-spacing:-.01em}
@@ -162,6 +203,33 @@ main{position:relative;z-index:2;max-width:1280px;margin:0 auto;padding:30px 26p
     .shell{flex-direction:column}
     .shell-side{width:100%;position:static}
     .shell-side .opsnav{flex-direction:row;overflow-x:auto}
+    /* phone widths: the settings sections and composer rows must shrink
+       with the screen — inline min-widths on inputs otherwise push the
+       page 125px past the viewport (invariant sweep 2026-09-12) */
+    @media(max-width:560px){
+      .crsect{flex-wrap:wrap}
+      .crsect>div{min-width:0;flex:1 1 100%}
+      .crsect .crr{margin-left:0;width:100%}
+      .rowline{flex-wrap:wrap}
+      .rowline .inp{min-width:0 !important;flex:1 1 100%}
+      /* the new-project modal at phone width: the folder input carried a 220px
+         min-width inline and ran 35px past a 390px viewport — found by driving
+         the real page in a real browser, not by reading the CSS */
+      #newapp-modal .inp{min-width:0 !important;max-width:100%}
+      #newapp-modal .kvrow .v{flex-wrap:wrap;min-width:0}
+      #newapp-modal .kvrow .v .inp{flex:1 1 100% !important}
+      #newapp-modal .rowline>*{min-width:0 !important;flex:1 1 100%}
+      #newapp-modal .card{padding:14px}
+      .kvrow{flex-wrap:wrap}
+      .kvrow>*{min-width:0}
+      .mono{overflow-wrap:anywhere;min-width:0}
+      .ev-row>*{min-width:0}
+      header{gap:8px;padding:0 12px}
+      header .hud{gap:8px;overflow-x:auto;min-width:0;justify-content:flex-end}
+      .hud .clock{display:none}
+      .hud .kbdhint span{display:none}
+      .who{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    }
     /* the inspector is a ZONE, not a dialog: on narrow windows it stacks
        UNDER the canvas instead of overlaying it — an always-visible
        full-screen overlay made the page faded and untouchable (field
@@ -220,6 +288,14 @@ section.view{animation:viewin .45s var(--ease) both}
 .pill.connect{color:var(--warn);border-color:color-mix(in srgb, var(--warn) 36%, transparent);background:color-mix(in srgb, var(--warn) 7%, transparent)}
 .pill.connect::before{background:var(--warn);box-shadow:0 0 8px color-mix(in srgb, var(--warn) 55%, transparent)}
 .pill.ghost{color:var(--dim);border-color:var(--line)}
+/* registered but never pushed: not down — simply not deployed yet. Saying
+   "offline" about an app that has never had a first push is a false alarm. */
+.pill.undeployed{color:var(--vio);border-color:color-mix(in srgb, var(--vio) 34%, transparent);background:color-mix(in srgb, var(--vio) 6%, transparent)}
+.pill.undeployed::before{background:var(--vio)}
+/* folder-picker rows (new-project form): same affordance as the app table */
+.pickrow{cursor:pointer;border:1px solid transparent;transition:background .16s var(--ease),border-color .16s var(--ease)}
+.pickrow:hover{background:color-mix(in srgb, var(--cy) 7%, transparent);border-color:var(--edge)}
+.pickrow:hover .rowarrow{color:var(--cy);opacity:1;transform:translateX(2px)}
 @keyframes ledpulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 /* ── layout bits ─────────────────────────────────────────────────────────── */
@@ -365,6 +441,9 @@ label{display:block;font-size:10px;font-weight:600;letter-spacing:1.8px;text-tra
   font-size:10px;backdrop-filter:blur(10px)}
 .railseg{display:flex;gap:8px;align-items:center;padding:5px 11px;border-radius:8px;transition:background .2s var(--ease)}
 .railseg:hover{background:color-mix(in srgb, var(--cy) 5%, transparent)}
+.railseg{cursor:pointer}
+.railseg:active{background:color-mix(in srgb, var(--cy) 10%, transparent)}
+#rail-heart,#rail-sync,#rail-pulse{cursor:pointer}
 .rlabel{letter-spacing:1.6px;text-transform:uppercase;color:var(--faint);font-size:8.5px;font-weight:700}
 .railval{font-family:var(--mono);letter-spacing:.3px;color:var(--dim)}
 .railval .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:7px;vertical-align:1px}
@@ -487,35 +566,32 @@ textarea.invtok{width:100%;min-height:76px;background:color-mix(in srgb, var(--b
   .detail-dialog .crumb{cursor:pointer}
 
 /* ══ theme skins ══════════════════════════════════════════════════════════ */
-body[data-theme="synthwave"]{
-  --bg0:#0b0217; --bg1:#140733;
-  --line:rgba(255,47,214,.18); --line2:rgba(255,47,214,.34);
-  --txt:#f4e9ff; --dim:#b79ad9; --faint:#7a5fa3;
-  --cy:#2be3ff; --vio:#ff2fd6; --mint:#53f2a0; --warn:#ffc857; --bad:#ff5f7a;
-  --glow-cy:0 0 14px rgba(43,227,255,.42); --glow-mint:0 0 14px rgba(83,242,160,.42);
-  background:
-    radial-gradient(1100px 620px at 82% -12%, rgba(255,47,214,.17), transparent 62%),
-    radial-gradient(900px 560px at -8% 112%, rgba(43,227,255,.13), transparent 60%),
-    var(--bg0);
+body[data-theme="graphite"]{
+  --bg0:#101012; --bg1:#16161a;
+  --panel:#17171b; --panel2:#1d1d22;
+  --line:rgba(255,255,255,.10); --line2:rgba(255,255,255,.19);
+  --txt:#eceae4; --dim:#a8a69e; --faint:#87857d;
+  --cy:#c9c7bf; --vio:#8e9aa6; --mint:#7fbf8f; --warn:#cfa93f; --bad:#d4726c;
+  --glow-cy:0 0 0 1px rgba(201,199,191,.35); --glow-mint:0 0 0 1px rgba(127,191,143,.35);
+  background:var(--bg0);
 }
 body[data-theme="light"]{
-  --bg0:#f2f4fa; --bg1:#e7ebf5;
-  --line:rgba(15,40,90,.13); --line2:rgba(15,40,90,.26);
-  --txt:#17233f; --dim:#5a6b8c; --faint:#93a0bf;
-  --cy:#0068e0; --vio:#6d3df0; --mint:#0a9d68; --warn:#a86f00; --bad:#cf2f4e;
-  --glow-cy:0 0 10px rgba(0,104,224,.20); --glow-mint:0 0 10px rgba(10,157,104,.22);
-  background:
-    radial-gradient(1100px 620px at 82% -12%, rgba(109,61,240,.09), transparent 62%),
-    radial-gradient(900px 560px at -8% 112%, rgba(0,104,224,.08), transparent 60%),
-    var(--bg0);
+  --bg0:#f6f5f1; --bg1:#eceae3;
+  --panel:#fbfaf6; --panel2:#f2f1ea;
+  --line:rgba(30,28,24,.14); --line2:rgba(30,28,24,.28);
+  --txt:#23231f; --dim:#56564f; --faint:#6f6e66;
+  --cy:#b06a00; --vio:#2f5d8a; --mint:#1f7a4d; --warn:#8a6100; --bad:#b3241c;
+  --glow-cy:0 0 0 1px rgba(176,106,0,.35); --glow-mint:0 0 0 1px rgba(31,122,77,.35);
+  background:var(--bg0);
 }
 body[data-theme="light"]::before{opacity:.5}
-body[data-theme="light"] a{color:#0057bb}
+body[data-theme="light"] a{color:#8a5200}
 body[data-theme="contrast"]{
   --bg0:#000; --bg1:#0a0a0a;
+  --panel:#0a0a0a; --panel2:#121212;
   --line:rgba(255,255,255,.42); --line2:rgba(255,255,255,.68);
-  --txt:#fff; --dim:#e8e8e8; --faint:#b8b8b8;
-  --cy:#00e5ff; --vio:#c77dff; --mint:#00ff88; --warn:#ffd60a; --bad:#ff4d4d;
+  --txt:#fff; --dim:#e8e8e8; --faint:#c9c9c9;
+  --cy:#ffb000; --vio:#8fd0ff; --mint:#00e676; --warn:#ffd60a; --bad:#ff5252;
   --glow-cy:none; --glow-mint:none;
   background:var(--bg0);
 }
@@ -911,6 +987,7 @@ body[data-theme="light"] body::before{opacity:.5}
     <span class="who" id="whoami"></span>
     <button class="hudbtn" id="btn-notify" title="notifications — the machine's inbox"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8a4.2 4.2 0 0 1 4.2 4.2c0 3.2 1.2 4.2 1.6 4.9H2.2c.4-.7 1.6-1.7 1.6-4.9A4.2 4.2 0 0 1 8 1.8Z"/><path d="M6.2 13a1.9 1.9 0 0 0 3.6 0"/></svg><span class="ndot hidden" id="notify-dot"></span></button>
     <button class="gear" id="btn-settings" title="settings — the machine's real configuration">⚙</button>
+    <button class="gear" id="btn-appearance" title="appearance — this browser only">🎨</button>
     <button class="btn small danger" id="btn-logout">Sign out</button>
   </div>
 </header>
@@ -918,15 +995,15 @@ body[data-theme="light"] body::before{opacity:.5}
 <main>
   <!-- mission-control status rail -->
   <div class="rail hidden" id="status-rail">
-    <div class="railseg" title="the control plane of this node — one instance, one address"><span class="rlabel">plane</span><span class="railval" id="rail-plane"><span class="st dim"><span class="dot"></span>—</span></span></div>
-    <div class="railseg" title="registered apps — up, down, and connect-mode counts"><span class="rlabel">apps</span><span class="railval" id="rail-apps"><span class="st dim"><span class="dot"></span>—</span></span></div>
-    <div class="railseg" title="the member mesh — nodes this home replicates with"><span class="rlabel">mesh</span><span class="railval" id="rail-mesh"><span class="st dim"><span class="dot"></span>—</span></span></div>
-    <div class="railseg" title="the daemon supervisor — revives crashes, leaves stopped apps stopped"><span class="rlabel">daemon</span><span class="railval" id="rail-daemon"><span class="st dim"><span class="dot"></span>—</span></span></div>
-    <div class="railseg" title="the entry node relay — public traffic for machines behind NAT"><span class="rlabel">entry</span><span class="railval" id="rail-entry"><span class="st dim"><span class="dot"></span>—</span></span></div>
-    <div class="railseg" title="latest audit event — click to open events"><span class="rlabel">audit</span><span class="railval" id="rail-events" style="cursor:pointer"><span class="st dim"><span class="dot"></span>—</span></span></div>
-    <span class="railpulse" id="rail-pulse" title="events · last 24h — one bar per hour, severity-colored (real events only)"></span>
-    <span class="heart" id="rail-heart">alive</span>
-    <span class="railsync" id="rail-sync">—</span>
+    <div class="railseg" data-rail="plane" title="plane — the control plane of this node · click: node checkup"><span class="rlabel">plane</span><span class="railval" id="rail-plane"><span class="st dim"><span class="dot"></span>—</span></span></div>
+    <div class="railseg" data-rail="apps" title="apps — registered on this machine · click: open apps"><span class="rlabel">apps</span><span class="railval" id="rail-apps"><span class="st dim"><span class="dot"></span>—</span></span></div>
+    <div class="railseg" data-rail="mesh" title="mesh — nodes this home replicates with · click: open mesh"><span class="rlabel">mesh</span><span class="railval" id="rail-mesh"><span class="st dim"><span class="dot"></span>—</span></span></div>
+    <div class="railseg" data-rail="daemon" title="daemon — the supervisor · click: operations"><span class="rlabel">daemon</span><span class="railval" id="rail-daemon"><span class="st dim"><span class="dot"></span>—</span></span></div>
+    <div class="railseg" data-rail="entry" title="entry — NAT relay · click: open entry"><span class="rlabel">entry</span><span class="railval" id="rail-entry"><span class="st dim"><span class="dot"></span>—</span></span></div>
+    <div class="railseg" data-rail="events" title="audit — latest event · click: open events"><span class="rlabel">audit</span><span class="railval" id="rail-events"><span class="st dim"><span class="dot"></span>—</span></span></div>
+    <span class="railpulse" id="rail-pulse" data-rail="events" title="events · last 24h — one bar per hour, severity-colored · click: open events"></span>
+    <span class="heart" data-rail="plane" title="alive — the node pulse · click: node checkup">alive</span>
+    <span class="railsync" id="rail-sync" data-rail="refresh" title="last sync · click: refresh everything">—</span>
   </div>
 
   <!-- mesh view -->
@@ -954,14 +1031,14 @@ body[data-theme="light"] body::before{opacity:.5}
 <div class="shell">
   <aside class="shell-side">
 <nav class="opsnav hidden" id="opsnav">
-    <button data-view="apps" class="active"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1.5" y="1.5" width="5.4" height="5.4" rx="1.4"/><rect x="9.1" y="1.5" width="5.4" height="5.4" rx="1.4"/><rect x="1.5" y="9.1" width="5.4" height="5.4" rx="1.4"/><rect x="9.1" y="9.1" width="5.4" height="5.4" rx="1.4"/></svg>apps</button>
     <button data-view="machine"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4.2h12M2 8h12M2 11.8h12"/><circle cx="6.2" cy="4.2" r="1.5" fill="var(--bg0)"/><circle cx="10" cy="8" r="1.5" fill="var(--bg0)"/><circle cx="5" cy="11.8" r="1.5" fill="var(--bg0)"/></svg>gitlive</button>
+    <button data-view="apps" class="active"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1.5" y="1.5" width="5.4" height="5.4" rx="1.4"/><rect x="9.1" y="1.5" width="5.4" height="5.4" rx="1.4"/><rect x="1.5" y="9.1" width="5.4" height="5.4" rx="1.4"/><rect x="9.1" y="9.1" width="5.4" height="5.4" rx="1.4"/></svg>apps</button>
   </nav>
   </aside>
   <div class="shell-canvas">
   <div id="app-view" class="hidden">
 
-    <div class="heroline">
+    <div class="heroline" id="apps-hero">
       <div>
         <div class="kicker">deployments · this node</div>
         <h1>Projects</h1>
@@ -969,8 +1046,9 @@ body[data-theme="light"] body::before{opacity:.5}
       </div>
       <div class="spacer"></div>
       <button class="btn small" id="btn-up" title="the master switch — bring every local app back (the CLI's gitlive up)">⚡ bring everything up</button>
-      <button class="btn small" id="btn-refresh">↻ refresh</button>
+      <button class="btn small" id="btn-refresh">↻ refresh</button><button class="mini-btn" data-guide="apps">?</button>
       <button class="btn small" id="btn-viewmode" title="cards or list — remembered in this browser">▦ cards</button>
+      <button class="btn small" id="btn-newapp" title="register a project folder on this machine — the same gitlive init the terminal runs">＋ new project</button>
       <button class="btn small primary" id="btn-practice" title="spin up a disposable practice app — real deploys, zero risk">▶ practice</button>
     </div>
   
@@ -989,6 +1067,7 @@ body[data-theme="light"] body::before{opacity:.5}
 
     
     </div>
+    <div id="apps-intel" class="card hidden" style="margin-bottom:14px"></div>
     <div class="tablewrap hidden" id="apps-tablewrap">
       <table>
         <thead><tr><th>Project</th><th>Status</th><th>Mode</th><th>Port</th><th>Last deploy</th><th>Source</th><th></th></tr></thead>
@@ -1009,6 +1088,47 @@ body[data-theme="light"] body::before{opacity:.5}
   </div>
   <div id="machine-doc" class="hidden">
 
+<div class="card" id="checkup-card">
+      <div class="row" style="margin-bottom:10px">
+        <div>
+          <div class="kicker">self-checkup · one fix per row</div>
+          <h2 style="margin:0">Node checkup</h2>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn small" id="btn-support" title="copy every machine fact a helper would ask for — never secrets, and identifiers masked by default. Click again within 5s for the full (unmasked) copy.">⧉ support bundle</button>
+        <button class="btn small" id="btn-checkup">↻ re-check</button><button class="mini-btn" data-guide="checkup">?</button>
+      </div>
+      <div id="checkup-body"><span class="muted">checking the machine…</span></div>
+</div>
+
+<div class="card" id="intel-view">
+      <div class="row" style="margin-bottom:10px">
+        <div>
+          <div class="kicker">intelligence · measured, not guessed</div>
+          <h2 style="margin:0">What this machine knows about itself</h2>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn small" id="btn-intel-report" title="the weekly digest as markdown — availability, incidents, deploys, backups, what the helpers did. Identifiers masked by default; click again within 5s for the full copy.">⧉ weekly report</button>
+        <button class="btn small" id="btn-intel-refresh">↻</button>
+        <button class="mini-btn" data-guide="intel">?</button>
+      </div>
+      <div id="intel-body"><span class="muted">reading the machine's own ledgers…</span></div>
+    </div>
+
+<div class="card" id="agents-view">
+      <div class="row" style="margin-bottom:10px">
+        <div>
+          <div class="kicker">self-help · bounded · receipted</div>
+          <h2 style="margin:0">Agents</h2>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn small" id="btn-agents-run">▶ run a pass now</button>
+        <button class="btn small" id="btn-agents-refresh">↻</button>
+        <button class="mini-btn" data-guide="agents">?</button>
+      </div>
+      <div id="agents-body"><span class="muted">reading the ledger…</span></div>
+    </div>
+
 <div class="card" id="public-card">
       <div class="row" style="margin-bottom:10px">
         <div>
@@ -1020,9 +1140,10 @@ body[data-theme="light"] body::before{opacity:.5}
       </div>
       <div id="public-body"><span class="muted">checking the public surfaces…</span></div>
       <div id="public-foot" class="muted" style="font-size:10.5px;margin-top:8px"></div>
+</div>
 <section id="mesh-view" class="msection">
     <div class="card">
-      <div class="row"><div><div class="kicker">registry · members · this home</div><h1>Mesh</h1></div><div class="spacer"></div><button class="btn small" id="btn-mesh-refresh">↻</button></div>
+      <div class="row"><div><div class="kicker">registry · members · this home</div><h1>Mesh</h1></div><div class="spacer"></div><button class="btn small" id="btn-mesh-refresh">↻</button><button class="mini-btn" data-guide="mesh">?</button></div>
       <div id="mesh-body" class="muted">loading…</div>
     </div>
     <div class="card">
@@ -1038,31 +1159,31 @@ body[data-theme="light"] body::before{opacity:.5}
   </section>
 <section id="peers-view" class="msection">
     <div class="card">
-      <div class="row"><div><div class="kicker">federation · peer book</div><h1>Peers</h1></div><div class="spacer"></div><button class="btn small" id="btn-peers-refresh">↻</button></div>
+      <div class="row"><div><div class="kicker">federation · peer book</div><h1>Peers</h1></div><div class="spacer"></div><button class="btn small" id="btn-peers-refresh">↻</button><button class="mini-btn" data-guide="peers">?</button></div>
       <div id="peers-body" class="muted">loading…</div>
     </div>
   </section>
 <section id="nodes-view" class="msection">
     <div class="card">
-      <div class="row"><div><div class="kicker">machines · one control plane</div><h1>Nodes</h1></div><div class="spacer"></div><button class="btn small" id="btn-nodes-refresh">↻</button></div>
+      <div class="row"><div><div class="kicker">machines · one control plane</div><h1>Nodes</h1></div><div class="spacer"></div><button class="btn small" id="btn-nodes-refresh">↻</button><button class="mini-btn" data-guide="nodes">?</button></div>
       <div id="nodes-body" class="muted">loading…</div>
     </div>
   </section>
 <section id="entry-view" class="msection">
     <div class="card">
-      <div class="row"><div><div class="kicker">entry node · NAT relay</div><h1>Entry</h1></div><div class="spacer"></div><button class="btn small" id="btn-entry-refresh">↻</button></div>
+      <div class="row"><div><div class="kicker">entry node · NAT relay</div><h1>Entry</h1></div><div class="spacer"></div><button class="btn small" id="btn-entry-refresh">↻</button><button class="mini-btn" data-guide="entry">?</button></div>
       <div id="entry-body" class="muted">loading…</div>
     </div>
   </section>
 <section id="keys-view" class="msection">
     <div class="card">
-      <div class="row"><div><div class="kicker">trust anchors · this node</div><h1>Keys</h1></div><div class="spacer"></div><button class="btn small" id="btn-keys-refresh">↻</button></div>
+      <div class="row"><div><div class="kicker">trust anchors · this node</div><h1>Keys</h1></div><div class="spacer"></div><button class="btn small" id="btn-keys-refresh">↻</button><button class="mini-btn" data-guide="keys">?</button></div>
       <div id="keys-body" class="muted">loading…</div>
     </div>
   </section>
 <section id="events-view" class="msection">
     <div class="card">
-      <div class="row"><div><div class="kicker">audit · events log</div><h1>Events</h1></div><div class="spacer"></div><button class="btn small" id="btn-events-refresh">↻</button></div>
+      <div class="row"><div><div class="kicker">audit · events log</div><h1>Events</h1></div><div class="spacer"></div><button class="btn small" id="btn-events-refresh">↻</button><button class="mini-btn" data-guide="events">?</button></div>
       <div id="ev-inspector" class="hidden"></div>
       <div class="muted" style="font-size:10.5px;margin:0 0 8px">click any event to inspect it — security events jump to their context</div>
       <div id="events-body" class="muted">loading…</div>
@@ -1070,28 +1191,10 @@ body[data-theme="light"] body::before{opacity:.5}
   </section>
 <section id="settings-view" class="msection">
   <div class="card">
-    <div class="row"><div><div class="kicker">control room · settings</div><h1>Settings</h1></div><div class="spacer"></div><button class="btn small" id="btn-settings-refresh">↻</button></div>
+    <div class="row"><div><div class="kicker">control room · settings</div><h1>Settings</h1></div><div class="spacer"></div><button class="btn small" id="btn-settings-refresh">↻</button><button class="mini-btn" data-guide="settings">?</button></div>
     <div id="settings-body" class="muted">loading…</div>
   </div>
-  <div class="card">
-    <div class="kicker" style="margin-bottom:6px">appearance · this browser only</div>
-    <h3 style="margin:4px 0 8px">skin</h3>
-    <div class="themes" id="theme-grid"></div>
-    <h3>layout</h3>
-    <div class="seg" id="density-seg">
-      <button data-d="compact">compact</button><button data-d="normal" class="on">normal</button><button data-d="relaxed">relaxed</button>
-    </div>
-    <h3>motion &amp; sound</h3>
-    <div class="rowline"><div><b>animations</b><small>row flashes · LED pulses · transitions</small></div><div class="switch on" id="sw-motion"></div></div>
-    <div class="rowline"><div><b>sound effects</b><small>soft synth blips on deploys &amp; swaps (WebAudio, no files)</small></div><div class="switch" id="sw-sound"></div></div>
-    <h3>custom skin</h3>
-    <div class="custom-tokens" id="custom-tokens"></div>
-    <button class="mini-btn" id="btn-apply-custom">apply custom</button>
-    <button class="mini-btn" id="btn-theme-export">export</button>
-    <button class="mini-btn" id="btn-theme-import">import</button>
-    <textarea id="theme-export" class="hidden" placeholder='{"bg0":"#04060b",...}' spellcheck="false"></textarea>
-    <div class="muted" style="font-size:10px;margin-top:10px">appearance lives in this browser only (<span class="mono">localStorage</span>) — every viewer gets their own cockpit.</div>
-  </div>
+    </section>
   </div><!-- /shell-canvas -->
   <aside id="inspector" class="inspector">
 
@@ -1113,6 +1216,7 @@ body[data-theme="light"] body::before{opacity:.5}
         </div>
         <div class="spacer"></div>
         <div class="actions" id="detail-actions"></div>
+        <div id="detail-diag" class="hidden" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0"></div>
       </div>
     </div>
     <nav class="dettabs" id="dettabs">
@@ -1163,9 +1267,10 @@ body[data-theme="light"] body::before{opacity:.5}
             <h2 style="margin:0">Deploy log</h2>
           </div>
           <div class="spacer"></div>
+          <input id="log-filter" class="inp" placeholder="search logs — filter to matching lines" style="max-width:240px" spellcheck="false">
         </div>
         <div class="term">
-          <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="fn" id="term-fn">gitlive / <b>deploy.log</b></span></div>
+          <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="fn" id="term-fn">gitlive / <b>deploy.log</b></span><span class="spacer"></span><select id="log-cap" class="inp" style="width:110px" title="when the log grows past this, the oldest half is dropped"><option value="0">log cap: off</option><option value="1">cap 1 MB</option><option value="5">cap 5 MB</option><option value="20">cap 20 MB</option></select><button class="mini-btn" id="btn-log-clear" title="empties deploy.log — the next push writes fresh lines">clear log</button></div>
           <div class="log" id="detail-log"><span class="empty">awaiting telemetry…</span></div>
         </div>
       </div>
@@ -1176,6 +1281,105 @@ body[data-theme="light"] body::before{opacity:.5}
   </div>
   </aside>  </aside>
 </div><!-- /shell -->
+<div id="appearance-pop" class="hidden" style="position:fixed;top:64px;right:14px;z-index:95;width:min(330px,calc(100vw - 28px));max-height:72vh;overflow:auto;background:var(--bg0);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 18px 50px rgba(0,0,0,.55)">
+  <div class="row" style="margin-bottom:8px"><div class="kicker">appearance · this browser only</div><span class="spacer"></span><button class="mini-btn" id="btn-appearance-close">✕</button></div>
+  <div class="muted" style="font-size:10.5px;margin-bottom:10px">your cockpit, your colors — lives in <span class="mono">localStorage</span>, every viewer gets their own.</div>
+  <div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin:4px 0 6px">skin</div>
+  <div class="themes" id="theme-grid"></div>
+  <div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin:12px 0 6px">layout</div>
+  <div class="seg" id="density-seg">
+    <button data-d="compact">compact</button><button data-d="normal" class="on">normal</button><button data-d="relaxed">relaxed</button>
+  </div>
+  <div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin:12px 0 6px">motion &amp; sound</div>
+  <div class="rowline" style="padding:6px 0"><div><b>animations</b><small>row flashes · LED pulses · transitions</small></div><div class="switch on" id="sw-motion"></div></div>
+  <div class="rowline" style="padding:6px 0"><div><b>sound effects</b><small>soft synth blips (WebAudio, no files)</small></div><div class="switch" id="sw-sound"></div></div>
+  <button class="mini-btn" id="btn-custom-skin-toggle" style="margin-top:10px">custom skin ▾</button>
+  <div id="custom-skin-wrap" class="hidden" style="margin-top:8px">
+    <div class="custom-tokens" id="custom-tokens"></div>
+    <button class="mini-btn" id="btn-apply-custom">apply custom</button>
+    <button class="mini-btn" id="btn-theme-export">export</button>
+    <button class="mini-btn" id="btn-theme-import">import</button>
+    <textarea id="theme-export" class="hidden" placeholder='{"bg0":"#04060b",...}' spellcheck="false"></textarea>
+  </div>
+</div>
+<div id="update-modal" class="hidden" style="position:fixed;inset:0;z-index:100;background:rgba(3,5,10,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px">
+  <div class="card" style="max-width:560px;width:100%;max-height:80vh;overflow:auto">
+    <div class="row" style="margin-bottom:10px">
+      <div><div class="kicker">platform update</div><h2 style="margin:0">gitlive can update itself</h2></div>
+      <span class="spacer"></span><button class="mini-btn" onclick="closeUpdateModal()">✕</button>
+    </div>
+    <div id="update-body"></div>
+  </div>
+</div>
+<div id="whatsnew-modal" class="hidden" style="position:fixed;inset:0;z-index:110;background:color-mix(in srgb, var(--bg0) 86%, transparent);display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto">
+  <div class="card" style="max-width:660px;width:100%">
+    <div class="row" style="margin-bottom:6px">
+      <div><div class="kicker">gitlive 4.0 · the plane that knows itself</div><h2 style="margin:0">What changed</h2></div>
+      <span class="spacer"></span><button class="mini-btn" id="btn-whatsnew-close" title="close">✕</button>
+    </div>
+    <div id="whatsnew-body" class="muted" style="font-size:12px;line-height:1.65"></div>
+    <div class="row" style="gap:8px;margin-top:14px">
+      <button class="btn small primary" id="btn-whatsnew-intel">open the intelligence section →</button>
+      <span class="spacer"></span>
+      <button class="btn small" id="btn-whatsnew-done">got it</button>
+    </div>
+  </div>
+</div>
+<div id="newapp-modal" class="hidden" style="position:fixed;inset:0;z-index:100;background:color-mix(in srgb, var(--bg0) 84%, transparent);display:flex;align-items:flex-start;justify-content:center;padding:22px;overflow:auto">
+  <div class="card" style="max-width:700px;width:100%">
+    <div class="row" style="margin-bottom:8px">
+      <div><div class="kicker">new project</div><h2 style="margin:0">Register a folder gitlive should deploy</h2></div>
+      <span class="spacer"></span><button class="mini-btn" id="btn-newapp-close" title="close">✕</button>
+    </div>
+    <div class="muted" style="font-size:11.5px;line-height:1.6;margin-bottom:12px">
+      This runs the <b style="color:var(--txt)">same <span class="mono">gitlive init</span></b> the terminal runs — same hooks, same registry row, and its output is shown to you below, unabridged.
+      Nothing is deployed until you push.
+    </div>
+
+    <div class="kvrow" style="align-items:flex-start">
+      <span class="lbl">folder</span>
+      <span class="v" style="flex:1;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input class="inp" id="na-dir" placeholder="~/dev/my-app — or pick one →" style="flex:1;min-width:220px" spellcheck="false" autocomplete="off">
+        <button class="mini-btn" id="btn-na-browse">📁 pick folder</button>
+      </span>
+    </div>
+    <div id="na-detect" class="muted" style="font-size:11px;margin:6px 0 2px 0;min-height:16px"></div>
+
+    <div id="na-browser" class="hidden" style="margin:10px 0 4px 0;border:1px solid var(--line);border-radius:var(--r-md);padding:10px;background:color-mix(in srgb, var(--bg1) 60%, transparent)">
+      <div class="row" style="gap:6px;margin-bottom:8px">
+        <button class="mini-btn" id="btn-na-up" title="go to the parent folder">↑ up</button>
+        <button class="mini-btn" id="btn-na-home" title="your home folder">⌂ home</button>
+        <span class="spacer"></span>
+        <span class="mono" id="na-browse-path" style="font-size:10.5px;color:var(--dim);overflow-wrap:anywhere"></span>
+      </div>
+      <div class="scrollwin" id="na-browse-list" style="max-height:230px"></div>
+      <div class="row" style="gap:6px;margin-top:8px">
+        <span class="muted" style="font-size:10.5px">folders only — hidden ones and gitlive's own working folder are left out.</span>
+        <span class="spacer"></span>
+        <button class="btn small primary" id="btn-na-use">use this folder</button>
+      </div>
+    </div>
+
+    <div class="rowline" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
+      <label style="flex:1;min-width:150px"><span class="lbl" style="display:block;margin-bottom:4px">name</span><input class="inp" id="na-name" placeholder="my-app" style="width:100%" spellcheck="false" autocomplete="off"></label>
+      <label style="flex:2;min-width:200px"><span class="lbl" style="display:block;margin-bottom:4px">start command</span><input class="inp" id="na-start" placeholder="npm start" style="width:100%" spellcheck="false" autocomplete="off"></label>
+    </div>
+    <div class="rowline" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px">
+      <label style="flex:2;min-width:200px"><span class="lbl" style="display:block;margin-bottom:4px">install command <span style="text-transform:none;letter-spacing:0">(blank = none)</span></span><input class="inp" id="na-install" placeholder="npm install --omit=dev" style="width:100%" spellcheck="false" autocomplete="off"></label>
+      <label style="flex:1;min-width:120px"><span class="lbl" style="display:block;margin-bottom:4px">build <span style="text-transform:none;letter-spacing:0">(optional)</span></span><input class="inp" id="na-build" placeholder="npm run build" style="width:100%" spellcheck="false" autocomplete="off"></label>
+      <label style="width:110px"><span class="lbl" style="display:block;margin-bottom:4px">port</span><input class="inp" id="na-port" placeholder="3000" style="width:100%" spellcheck="false" autocomplete="off"></label>
+    </div>
+    <div class="row" style="gap:14px;flex-wrap:wrap;margin-top:12px;align-items:center">
+      <label class="row" style="gap:6px;align-items:center;cursor:pointer;font-size:11.5px"><input type="checkbox" id="na-safe"> <span>safe mode <span class="muted">(blue-green: each release is health-checked before it takes over — needs the port)</span></span></label>
+    </div>
+
+    <div class="row" style="gap:8px;margin-top:14px;align-items:center">
+      <button class="btn primary" id="btn-na-create">＋ create it</button>
+      <span class="muted" id="na-hint" style="font-size:11px">nothing is written to your project folder except a git remote named after the app.</span>
+    </div>
+    <div id="na-out" class="hidden" style="margin-top:12px"></div>
+  </div>
+</div>
   <div class="authwrap" id="auth-view">
     <div class="auth-grid">
       <div class="auth-hero">
@@ -1280,12 +1484,18 @@ const api = {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401) { this.token = null; localStorage.removeItem('gitlive.session'); showAuth(); }
-      throw new Error((data.error && data.error.message) || ('HTTP ' + res.status));
+      const err = new Error((data.error && data.error.message) || ('HTTP ' + res.status));
+      // the server may attach the real process output behind a failure (the
+      // create-app form shows it verbatim instead of paraphrasing it)
+      if (data.error && data.error.details) err.details = data.error.details;
+      err.status = res.status;
+      err.code = data.error && data.error.code;
+      throw err;
     }
     return data.data;
   },
 };
-const state = { apps: [], detail: null, timer: null, railTimer: null, lastSync: null };
+const state = { apps: [], detail: null, timer: null, railTimer: null, lastSync: null, intel: null, intelAt: 0 };
 
 function flash(msg, kind) {
   const f = $('#auth-flash');
@@ -1326,8 +1536,10 @@ function showApp() {
   $('#app-view').classList.remove('hidden');
   for (const b of document.querySelectorAll('#opsnav button')) b.classList.toggle('active', b.dataset.view === 'apps');
   loadApps(); startPolling(); startRail();
+  maybeShowWhatsNew(); // once per version: a release this size is not a secret
 }
 function showDetail(name) {
+  state.diagRan = false;
   $('#inspector-empty').classList.add('hidden');
   $('#machine-doc').classList.add('hidden');
   $('#detail-view').classList.remove('hidden');
@@ -1352,9 +1564,12 @@ document.querySelectorAll('#dettabs button').forEach((b) => {
 
 function statusPill(a) {
   if (a.connect) return '<span class="pill connect">connect</span>';
-  return a.alive
-    ? '<span class="pill up">online</span>'
-    : '<span class="pill down">offline</span>';
+  if (a.alive) return '<span class="pill up">online</span>';
+  // a registered app with no deploy on record is not down — it is waiting for
+  // its first push, and the pill says exactly that
+  return a.lastDeploy && a.lastDeploy.commit
+    ? '<span class="pill down">offline</span>'
+    : '<span class="pill undeployed">not deployed yet</span>';
 }
 
 
@@ -1449,6 +1664,8 @@ function evSumm(e) {
 function renderNotify(entries) {
   const body = $('#notify-body');
   if (!body) return;
+  const drawer = $('#notify-drawer');
+  const keepScroll = drawer ? drawer.scrollTop : 0;
   const list = (entries || []).slice().reverse().slice(0, 60);
   const filtered = notifyFilter === 'all' ? list : list.filter((e) => evSev(e.kind) === notifyFilter);
   // filter chips (only when there is something to filter)
@@ -1499,6 +1716,7 @@ function renderNotify(entries) {
       else setView('machine');
     });
   }
+  if (drawer) drawer.scrollTop = keepScroll;
 }
 $('#btn-notify').addEventListener('click', () => {
   const d = $('#notify-drawer');
@@ -1510,6 +1728,22 @@ $('#btn-notify').addEventListener('click', () => {
       refreshNotify(ev.entries || []);
     }).catch(() => {});
   }
+});
+// the 🎨 popover: appearance is per-browser, so it lives in the header, not
+// in the machine doc — a small panel, not a whole card
+$('#btn-appearance') && $('#btn-appearance').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('#appearance-pop').classList.toggle('hidden');
+});
+$('#btn-appearance-close') && $('#btn-appearance-close').addEventListener('click', () => $('#appearance-pop').classList.add('hidden'));
+$('#btn-custom-skin-toggle') && $('#btn-custom-skin-toggle').addEventListener('click', () => {
+  const w = $('#custom-skin-wrap');
+  w.classList.toggle('hidden');
+  $('#btn-custom-skin-toggle').textContent = w.classList.contains('hidden') ? 'custom skin ▾' : 'custom skin ▴';
+});
+document.addEventListener('click', (e) => {
+  const p = $('#appearance-pop');
+  if (p && !p.classList.contains('hidden') && !p.contains(e.target) && !(e.target.closest && e.target.closest('#btn-appearance'))) p.classList.add('hidden');
 });
 document.addEventListener('click', (e) => {
   const d = $('#notify-drawer');
@@ -1557,6 +1791,11 @@ async function loadStatusRail() {
       const evd = await api.call('GET', '/api/events');
       const ev0 = (evd.entries || []).slice().reverse()[0];
       refreshNotify(evd.entries || []);
+      // an open drawer must stay LIVE, not just the unread dot
+      try {
+        const dr = $('#notify-drawer');
+        if (dr && dr.classList.contains('open')) renderNotify(evd.entries || []);
+      } catch { /* drawer optional */ }
       // the node pulse: 24 hourly bars, severity-colored, opacity by count
       const pulse = $('#rail-pulse');
       if (pulse) {
@@ -1599,6 +1838,18 @@ async function loadStatusRail() {
   }
 }
 $('#rail-events').addEventListener('click', () => setView('machine'));
+// the rail is a TOOLBAR: every segment takes you to its section
+document.addEventListener('click', (e) => {
+  const seg = e.target.closest('#status-rail [data-rail]');
+  if (!seg) return;
+  const dest = seg.dataset.rail;
+  if (dest === 'refresh') { loadApps(); loadStatusRail(); toast('refreshed'); return; }
+  const sectionMap = { plane: 'checkup-card', apps: null, mesh: 'mesh-view', daemon: 'settings-view', entry: 'entry-view', events: 'events-view' };
+  if (dest === 'apps') { setView('apps'); return; }
+  setView('machine');
+  const target = sectionMap[dest];
+  if (target) setTimeout(() => { const el = document.getElementById(target); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 150);
+});
 function startRail() {
   stopRail();
   state.railTimer = setInterval(loadStatusRail, 6000);
@@ -1669,6 +1920,11 @@ function journeyBlock(a) {
     { k: 'live', s: publicOk ? 'done' : '' },
   ];
   let action = '';
+  if (deployed && a.alive === false) {
+    action = `<div class="spine"><span class="spineline"><span class="spinedot" style="background:var(--bad)"></span><span data-downwhy="${escapeHtml(a.name)}">offline — checking the machine…</span></span><button class="btn small primary spine-btn" data-restart="${escapeHtml(a.name)}">↻ restart</button></div>`;
+    downWhy(a);
+    return railHtml(steps) + action;
+  }
   if (!deployed) {
     action = `<div class="spine"><span class="spineline">connected — it isn't running yet.</span><button class="btn small primary spine-btn" data-deploy="${escapeHtml(a.name)}">▶ deploy it</button></div>`;
   } else if (!named) {
@@ -1703,6 +1959,25 @@ function journeyBlock(a) {
   return railHtml(steps) + action;
 }
 
+// the honest "why is it down" line on the card — asks the machine, never guesses
+async function downWhy(a) {
+  try {
+    const st = await api.call('GET', '/api/apps/' + encodeURIComponent(a.name));
+    const el = document.querySelector(`[data-downwhy="${CSS.escape(a.name)}"]`);
+    if (!el) return;
+    let line;
+    if (st.connect) line = 'managed by its runner — check that machine';
+    else if (st.safe) line = st.proxyUp === false
+      ? 'offline — the public proxy is down (the backend slot may be healthy); restart revives the proxy'
+      : 'offline — the process is down; restart brings it back through the real path';
+    else line = 'offline — the process is stopped; restart brings it back';
+    el.textContent = line;
+  } catch (err) {
+    const el = document.querySelector(`[data-downwhy="${CSS.escape(a.name)}"]`);
+    if (el) el.textContent = 'offline — restart it, then watch the theater';
+  }
+}
+
 async function loadApps() {
   try {
     const apps = await api.call('GET', '/api/apps');
@@ -1722,18 +1997,21 @@ async function loadApps() {
     }
 
     loadPublic(false); // owner-driven public-reach card (server-cached 60s)
+    loadAppsIntel(false); // the measured findings above the board (60s cache)
     $('#apps-subline').textContent = apps.length
       ? `${apps.length} project${apps.length === 1 ? '' : 's'} under gitlive control on this machine`
-      : 'No projects yet — run gitlive init inside a project, then it appears here.';
+      : 'No projects yet — press ＋ new project and pick a folder, then it appears here.';
     const hs = $('#hero-stats');
     if (hs) {
       const up = apps.filter((a) => a.alive).length;
-      const dn = apps.filter((a) => a.alive === false && !a.connect).length;
+      const dn = apps.filter((a) => a.alive === false && !a.connect && a.lastDeploy && a.lastDeploy.commit).length;
+      const wait = apps.filter((a) => a.alive === false && !a.connect && !(a.lastDeploy && a.lastDeploy.commit)).length;
       const doms = apps.reduce((n, a) => n + ((a.domains || []).length), 0);
       const meshed = apps.filter((a) => a.mesh && a.mesh.meshed).length;
       hs.innerHTML = apps.length
         ? `<div class="herostat good"><span class="num">${up}</span><span class="lab">online</span></div>` +
           `<div class="herostat ${dn ? 'warn' : ''}"><span class="num">${dn}</span><span class="lab">offline</span></div>` +
+          (wait ? `<div class="herostat"><span class="num">${wait}</span><span class="lab">awaiting first push</span></div>` : '') +
           `<div class="herostat"><span class="num">${apps.length}</span><span class="lab">projects</span></div>` +
           `<div class="herostat"><span class="num">${doms}</span><span class="lab">domains</span></div>` +
           `<div class="herostat"><span class="num">${meshed}</span><span class="lab">meshed</span></div>`
@@ -1746,8 +2024,8 @@ async function loadApps() {
           <div class="esteps">
             <div class="estep">
               <div class="n">01 · from a folder</div>
-              <div class="t">Turn an existing project into a live app</div>
-              <span class="cmd"><b>$</b> cd your-project && gitlive init [--port 3000]</span>
+              <div class="t">Turn an existing project into a live app — the ＋ new project button does it without a terminal</div>
+              <span class="cmd"><b>▸</b> press ＋ new project, pick the folder, create<span style="color:var(--faint)"> ← same gitlive init the CLI runs</span></span>
               <span class="cmd"><b>$</b> git push&nbsp;&nbsp;<span style="color:var(--faint)">← deploy-on-push, live on this hardware</span></span>
             </div>
             <div class="estep">
@@ -1793,6 +2071,29 @@ async function loadApps() {
       const bars = a.h.samples.map((smp, i) => `<rect x="${i * 4}" y="${smp.up ? 2 : 10}" width="3" height="${smp.up ? 10 : 2}" rx="0.7" fill="${smp.up ? 'var(--mint)' : 'var(--bad)'}" opacity="${smp.up ? '.85' : '.6'}"/>`).join('');
       return `<svg width="${Math.max(12, a.h.samples.length * 4)}" height="14" viewBox="0 0 ${Math.max(12, a.h.samples.length * 4)} 14" preserveAspectRatio="none" style="width:${Math.max(12, a.h.samples.length * 4)}px;height:14px;flex:none">${bars}</svg>`;
     };
+    // the 4s poll rebuilds the grid — never let it eat what the owner is
+    // typing or which form they opened (the events-ticker lesson applied
+    // to the cards: refreshes must preserve the view)
+    const gridSnap = (() => {
+      const g = $('#apps-grid');
+      if (!g) return null;
+      const values = {};
+      const open = [];
+      for (const el of g.querySelectorAll('.zpub-form')) {
+        if (!el.classList.contains('hidden')) open.push(el.dataset.name);
+      }
+      for (const el of g.querySelectorAll('input, textarea')) {
+        const form = el.closest('[data-name]');
+        const key = (form ? form.dataset.name : '?') + '|' + (el.dataset.f || el.className || el.type || '?');
+        values[key] = el.value;
+      }
+      let focusKey = null;
+      if (document.activeElement && g.contains(document.activeElement)) {
+        const f = document.activeElement.closest('[data-name]');
+        focusKey = (f ? f.dataset.name : '?') + '|' + (document.activeElement.dataset.f || document.activeElement.className || document.activeElement.type || '?');
+      }
+      return { values, open, focusKey };
+    })();
     $('#apps-grid').innerHTML = yard.length
       ? apps.map((a) => {
           const ld = a.lastDeploy;
@@ -1838,6 +2139,19 @@ async function loadApps() {
     for (const el of document.querySelectorAll('#apps-grid .spine-btn')) {
       el.addEventListener('click', async (ev) => {
         ev.stopPropagation();
+        if (el.dataset.restart) {
+          const name = el.dataset.restart;
+          el.disabled = true; el.textContent = 'restarting…';
+          try {
+            await api.call('POST', '/api/apps/' + encodeURIComponent(name) + '/restart');
+            toast('[' + name + '] restart ran — watch the card come back green');
+            setTimeout(loadApps, 1500);
+          } catch (err) {
+            toast('restart failed: ' + err.message);
+            el.disabled = false; el.textContent = '↻ restart';
+          }
+          return;
+        }
         const name = el.dataset.deploy;
         el.disabled = true; el.textContent = 'deploying…';
         try {
@@ -1928,6 +2242,25 @@ async function loadApps() {
         }
       });
     }
+    // restore what the poll snapshot preserved: open forms, typed values,
+    // and the caret position — the refresh never eats the owner's work
+    if (gridSnap) {
+      for (const name of (gridSnap.open || [])) {
+        const f = document.querySelector('#apps-grid .zpub-form[data-name="' + CSS.escape(name) + '"]');
+        if (f) f.classList.remove('hidden');
+      }
+      for (const [key, val] of Object.entries(gridSnap.values || {})) {
+        const [name, field] = key.split('|');
+        const el = document.querySelector('#apps-grid [data-name="' + CSS.escape(name) + '"] input[data-f="' + CSS.escape(field) + '"]') ||
+          document.querySelector('#apps-grid input[data-f="' + CSS.escape(field) + '"]');
+        if (el) el.value = val;
+      }
+      if (gridSnap.focusKey) {
+        const [name, field] = gridSnap.focusKey.split('|');
+        const el = document.querySelector('#apps-grid [data-name="' + CSS.escape(name) + '"] input[data-f="' + CSS.escape(field) + '"]');
+        if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch { /* not text-like */ } }
+      }
+    }
     loadPoolView(); // resting apps appear as a section inside the same view
     loadWelcome(apps);
   } catch (err) { toast('link failed: ' + err.message); }
@@ -1938,6 +2271,41 @@ async function loadApps() {
 // name, a backup receipt, a practice app) — never before. Dismissible;
 // reopenable from ⌘K. When everything is done it retires itself.
 const WELCOME_KEY = 'gitlive.welcome.seen';
+// ── the upgrade moment ─────────────────────────────────────────────────────
+// A version this size should be visible, not something the owner has to
+// discover. Shown once per new version, reopenable from ⌘K and the guide.
+const WHATSNEW_KEY = 'gitlive.whatsnew.seen';
+const RELEASE_NOTES = {
+  version: '4.0.0',
+  title: 'the plane that knows itself',
+  lines: [
+    ['intelligence', 'A new section in gitlive measures this machine from its own ledgers: per-app uptime over real covered time, every outage with its duration, MTBF/MTTR, and a 0-100 health score whose factors, weights and sample counts are always shown. A factor with no data is excluded and its weight redistributed — never scored as zero.'],
+    ['insight, not guesswork', 'Deterministic detectors flag what the numbers actually say: crash looping, failures clustered in a time-of-day window (with a p-value), a resource growing toward a limit with a forecast, a failing deploy streak, a stale backup, an expiring certificate — and the most useful one of all: "went down 4 minutes after deploy f0e96a63" with a rollback action.'],
+    ['a timeline you can audit', 'Every project now carries its own story — deploys with their outcome and reason, backups, agent actions, jobs — merged from receipts already on disk. The machine area shows the machine\'s own machinery; project names stay in projects.'],
+    ['policies you set', 'The helper agents obey you per project: off (hands off), watch (diagnose and recommend only), repair (restart, verified). Maintenance windows suspend repairs. After a repair that could not be verified the wait doubles — 5m, 15m, 1h, 6h — instead of retrying forever, and the schedule is printed on the receipt.'],
+    ['verified repairs', 'A restart is no longer "done" because a spawn call returned: the agent waits for the app to answer, records whether it verified, and when it could not, the receipt says failed and carries the app\'s own last error line.'],
+    ['one command away', 'gitlive intel · gitlive report --days 7 · gitlive timeline · gitlive policy. Every number in the cockpit can be printed, piped and diffed from a terminal.'],
+    ['and the number itself', 'This release also finally numbers what the code already was: the member mesh, the entry/relay, the name office, the admission exam and the helper agents all shipped after 2.6.2 without a version to show for it. 3.0 was the fabric; 4.0 is the plane that understands it.'],
+  ],
+};
+function openWhatsNew() {
+  const m = $('#whatsnew-modal');
+  if (!m) return;
+  const body = $('#whatsnew-body');
+  if (body) body.innerHTML = RELEASE_NOTES.lines.map(([t, d]) =>
+    '<div style="margin-bottom:10px"><b style="color:var(--txt)">' + escapeHtml(t) + '</b> — ' + escapeHtml(d) + '</div>').join('');
+  m.classList.remove('hidden');
+}
+function closeWhatsNew(markSeen = true) {
+  const m = $('#whatsnew-modal');
+  if (m) m.classList.add('hidden');
+  if (markSeen) { try { localStorage.setItem(WHATSNEW_KEY, RELEASE_NOTES.version); } catch { /* noop */ } }
+}
+function maybeShowWhatsNew() {
+  try { if (localStorage.getItem(WHATSNEW_KEY) === RELEASE_NOTES.version) return; } catch { return; }
+  setTimeout(openWhatsNew, 900);
+}
+
 async function loadWelcome(apps) {
   const card = $('#welcome-card');
   if (!card) return;
@@ -1948,7 +2316,9 @@ async function loadWelcome(apps) {
     const named = domains.apps.some((a) => (a.domains || []).length) || (domains.zones || []).length > 0;
     const backedUp = domains.apps.some((a) => a.backedUp);
     const practiced = (apps || []).some((a) => a.sandbox);
+    const registered = (apps || []).length > 0;
     const items = [
+      { done: registered, t: 'Register a project', d: registered ? 'gitlive knows where your code lives' : '＋ new project — pick a folder, no terminal', go: 'newapp' },
       { done: deployed, t: 'Ship your first app', d: deployed ? 'deploy receipt on record' : '$ git push <app> main', go: null },
       { done: named, t: 'Give it a name', d: named ? 'a name answers for it' : 'settings → naming & domains', go: 'settings' },
       { done: backedUp, t: 'Prove the backups', d: backedUp ? 'backup receipt on record' : '$ gitlive backup <app>', go: null },
@@ -1960,10 +2330,11 @@ async function loadWelcome(apps) {
         <span class="wdot"></span>
         <span class="wt">${escapeHtml(it.t)}</span>
         <span class="wd">${escapeHtml(it.d)}</span>
-        ${it.go ? `<button class="btn small wgo" data-wgo="${it.go}">${it.go === 'settings' ? 'open settings' : '▶ practice'}</button>` : ''}
+        ${it.go ? `<button class="btn small wgo" data-wgo="${it.go}">${it.go === 'settings' ? 'open settings' : it.go === 'newapp' ? '＋ new project' : '▶ practice'}</button>` : ''}
       </div>`).join('');
     card.querySelectorAll('[data-wgo]').forEach((b) => b.addEventListener('click', () => {
       if (b.dataset.wgo === 'settings') setView('machine');
+      else if (b.dataset.wgo === 'newapp') openNewApp();
       else $('#btn-practice').click();
     }));
     const allDone = items.every((i) => i.done);
@@ -1980,18 +2351,270 @@ function showWelcome() {
   loadApps();
   setView('apps');
 }
+$('#btn-whatsnew-close').addEventListener('click', () => closeWhatsNew(true));
+$('#btn-whatsnew-done').addEventListener('click', () => closeWhatsNew(true));
+$('#btn-whatsnew-intel').addEventListener('click', () => { closeWhatsNew(true); setView('machine'); });
+$('#whatsnew-modal').addEventListener('click', (ev) => { if (ev.target && ev.target.id === 'whatsnew-modal') closeWhatsNew(true); });
 $('#btn-welcome-close').addEventListener('click', () => {
   try { localStorage.setItem(WELCOME_KEY, '1'); } catch { /* noop */ }
   $('#welcome-card').classList.add('hidden');
 });
+
+// the troubleshoot chain: why is it down / why no public traffic — one row
+// per hop, one honest fix per hop
+async function runDiagnose(name) {
+  const host = $('#detail-diag');
+  if (!host) return;
+  host.classList.remove('hidden');
+  host.innerHTML = '<span class="muted">checking process → port → health → names → public…</span>';
+  try {
+    const d = await api.call('GET', '/api/apps/' + encodeURIComponent(name) + '/diagnose');
+    const color = { ok: 'var(--mint)', warn: 'var(--warn)', fail: 'var(--bad)', skip: 'var(--faint)' };
+    host.innerHTML = '<div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin-bottom:6px">diagnose · process → port → health → names → public</div>' +
+      d.rows.map((r) => `
+        <div class="kvrow" style="align-items:flex-start;gap:10px;padding:7px 2px">
+          <span class="pdot" style="background:${color[r.status] || 'var(--faint)'};box-shadow:0 0 8px ${color[r.status] || 'var(--faint)'}66;margin-top:4px"></span>
+          <span style="flex:1;min-width:0">
+            <div style="font-size:12.5px;color:var(--txt)">${escapeHtml(r.title)}</div>
+            <div class="muted" style="font-size:11px;line-height:1.5">${escapeHtml(r.detail)}</div>
+          </span>
+          ${r.fix ? diagFixButton(r.fix) : '<span class="chip' + (r.status === 'ok' ? ' on' : '') + '" style="white-space:nowrap">' + (r.status === 'ok' ? 'fine' : r.status) + '</span>'}
+        </div>`).join('');
+    for (const b of host.querySelectorAll('[data-dfixaction]')) {
+      b.addEventListener('click', async () => {
+        const act = b.dataset.dfixaction;
+        b.disabled = true;
+        try {
+          if (act === 'restart' || act === 'deploy') {
+            await api.call('POST', '/api/apps/' + encodeURIComponent(name) + '/' + act, {});
+            toast('[' + name + '] ' + act + ' ran — the chain re-checks in a moment');
+          } else {
+            await settingsAction(act);
+          }
+          setTimeout(() => runDiagnose(name), 2500);
+        } catch (err) { toast(act + ' failed: ' + err.message); }
+      });
+    }
+    for (const b of host.querySelectorAll('[data-dfixlink]')) {
+      b.addEventListener('click', () => {
+        const t = b.dataset.dfixlink;
+        if (t === 'log') { setDetailTab('log'); }
+        else if (t === 'apps') { setView('apps'); }
+        else if (t === 'naming') { setView('machine'); setTimeout(() => { const el = document.getElementById('settings-view'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 200); }
+      });
+    }
+  } catch (err) {
+    host.innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
+  }
+}
+function diagFixButton(fix) {
+  if (fix.kind === 'action') return `<button class="btn small primary" data-dfixaction="${escapeHtml(fix.action)}">${escapeHtml(fix.label)}</button>`;
+  if (fix.kind === 'link') return `<button class="btn small" data-dfixlink="${escapeHtml(fix.target)}">${escapeHtml(fix.label)} →</button>`;
+  return '';
+}
+
+// ── the self-update flow: badge → changelog → guarded one-click update ────
+async function openUpdateModal() {
+  const m = $('#update-modal');
+  const body = $('#update-body');
+  if (!m || !body) return;
+  m.classList.remove('hidden');
+  body.innerHTML = 'checking the registry…';
+  try {
+    const d = await api.call('GET', '/api/self/version');
+    if (!d.newer) {
+      body.innerHTML = '<div class="muted" style="font-size:12px;line-height:1.6">this node runs <b style="color:var(--txt)">v' + escapeHtml(d.installed) + '</b>' + (d.latest ? (d.latest === d.installed ? ' — the newest published version.' : ' — the npm registry has v' + escapeHtml(d.latest) + ' (older); this build is ahead, and that is fine on this machine.') : ' — the registry did not answer; nothing to do.') + '</div>';
+      return;
+    }
+    body.innerHTML =
+      '<div style="font-size:12.5px;margin-bottom:8px"><b style="color:var(--warn)">v' + escapeHtml(d.installed) + ' → v' + escapeHtml(d.latest) + '</b><span class="muted" style="font-size:11px"> · the update backs up first and refuses without one</span></div>' +
+      '<div class="scrollwin" style="max-height:220px"><pre class="mono" style="font-size:10.5px;white-space:pre-wrap;margin:0">' + escapeHtml(d.changelog || '(changelog unavailable)') + '</pre></div>' +
+      '<div class="row" style="gap:8px;margin-top:10px"><button class="btn small primary" data-update-go>update now</button><button class="btn small" data-update-close>later</button></div>';
+    const go = body.querySelector('[data-update-go]');
+    go.addEventListener('click', async (ev) => {
+      if (!go.dataset.confirm) {
+        go.dataset.confirm = '1';
+        go.textContent = 'sure? the plane restarts';
+        setTimeout(() => { if (go.isConnected) { delete go.dataset.confirm; go.textContent = 'update now'; } }, 4000);
+        return;
+      }
+      go.disabled = true; go.textContent = 'updating…';
+      try {
+        await api.call('POST', '/api/self/update', {});
+        toast('updating — the dashboard blinks once, then reload it');
+      } catch (err) {
+        toast('update refused or failed: ' + err.message);
+        go.disabled = false; go.textContent = 'update now';
+      }
+    });
+    body.querySelector('[data-update-close]').addEventListener('click', closeUpdateModal);
+  } catch (err) {
+    body.innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
+  }
+}
+function closeUpdateModal() {
+  const m = $('#update-modal');
+  if (m) m.classList.add('hidden');
+}
+
+// ── new project (the last terminal-only step, now a form) ───────────────
+// Registering a folder used to mean typing `gitlive init` in a terminal. The
+// form drives the SAME command through POST /api/apps and prints its output
+// verbatim; the folder picker is a read-only listing (GET /api/browse) so the
+// owner never has to remember an absolute path.
+// dirty = the fields the OWNER edited; detection fills everything else. This
+// is per-field on purpose: changing the folder must re-fill the commands
+// (that is the whole point of detection), while a name the owner typed must
+// survive it. The folder input itself is not a "field" here — a browser probe
+// caught the old single `touched` flag blocking every prefill the moment a
+// path was typed, so a typed path could never create an app.
+const naState = { dir: '', browse: '', dirty: new Set() };
+
+function openNewApp() {
+  const m = $('#newapp-modal');
+  if (!m) return;
+  m.classList.remove('hidden');
+  const out = $('#na-out');
+  if (out) { out.classList.add('hidden'); out.innerHTML = ''; }
+  naBrowse(naState.browse || '', false);
+}
+function closeNewApp() {
+  const m = $('#newapp-modal');
+  if (m) m.classList.add('hidden');
+}
+
+function naSetField(id, value, force) {
+  const el = $('#' + id);
+  if (!el) return;
+  if (!force && naState.dirty.has(id)) return; // never overwrite what the owner typed
+  el.value = value || '';
+}
+
+function naHint(text, color) {
+  const el = $('#na-detect');
+  if (!el) return;
+  el.innerHTML = text;
+  el.style.color = color || 'var(--dim)';
+}
+
+// walk to a folder and show what gitlive can tell about it
+async function naBrowse(dir, navigate = true) {
+  try {
+    const d = await api.call('GET', '/api/browse' + (dir ? '?path=' + encodeURIComponent(dir) : ''));
+    naState.browse = d.path;
+    const pathEl = $('#na-browse-path');
+    if (pathEl) pathEl.textContent = d.path;
+    const list = $('#na-browse-list');
+    if (list) {
+      list.innerHTML = d.dirs.length
+        ? d.dirs.map((e) => `<div class="row pickrow" data-na-go="${escapeHtml(e.path)}" style="gap:8px;padding:5px 6px;border-radius:6px;align-items:center">
+            <span class="mono" style="font-size:11.5px;flex:1;overflow-wrap:anywhere">${escapeHtml(e.name)}</span>
+            ${e.git ? '<span class="tag" style="font-size:9px">git</span>' : ''}
+            ${e.kind && e.kind !== 'unknown' ? `<span class="tag cy" style="font-size:9px">${escapeHtml(e.kind)}</span>` : ''}
+            <span class="rowarrow">›</span></div>`).join('')
+        : '<div class="muted" style="font-size:11px;padding:6px">no sub-folders here — use this folder, or go up.</div>';
+    }
+    if (navigate) {
+      // prefill only when the form is still untouched, then read the folder
+      // back: the owner sees the detected stack BEFORE committing to it
+      naSetField('na-dir', d.path, false);
+      naDetect(d.path);
+    }
+    return d;
+  } catch (err) {
+    naHint('cannot list that folder: ' + escapeHtml(err.message), 'var(--bad)');
+    return null;
+  }
+}
+
+// what the chosen folder looks like to gitlive — stack, commands, git state
+async function naDetect(dir) {
+  const d = dir ? dir.trim() : '';
+  if (!d) { naHint('', 'var(--dim)'); return; }
+  let info;
+  try { info = await api.call('GET', '/api/browse?path=' + encodeURIComponent(d)); }
+  catch (err) { naHint(escapeHtml(err.message), 'var(--bad)'); return; }
+  naState.dir = info.path;
+  naSetField('na-name', info.here.name, false);
+  naSetField('na-install', info.here.installCmd, false);
+  naSetField('na-start', info.here.startCmd, false);
+  const bits = [];
+  bits.push(info.here.kind === 'unknown'
+    ? '<span style="color:var(--warn)">no stack detected here</span> — set the start command yourself'
+    : `looks like <b style="color:var(--txt)">${escapeHtml(info.here.kind)}</b>`);
+  bits.push(info.here.git ? 'already a git repo ✓' : 'gitlive will <span class="mono">git init</span> here');
+  if (info.here.registered) bits.push('<span style="color:var(--warn)">an app with this folder\'s name already exists</span>');
+  naHint(bits.join(' · '), 'var(--dim)');
+  return info;
+}
+
+async function naCreate(reconfigure) {
+  const btn = $('#btn-na-create');
+  const out = $('#na-out');
+  const body = {
+    dir: ($('#na-dir') || {}).value || '',
+    name: (($('#na-name') || {}).value || '').trim(),
+    start: (($('#na-start') || {}).value || '').trim(),
+    install: (($('#na-install') || {}).value || '').trim(),
+    build: (($('#na-build') || {}).value || '').trim(),
+    port: (($('#na-port') || {}).value || '').trim(),
+    safe: Boolean($('#na-safe') && $('#na-safe').checked),
+    ...(reconfigure ? { reconfigure: true } : {}),
+  };
+  if (!body.dir.trim()) { naHint('choose the folder your project lives in', 'var(--bad)'); return; }
+  btn.disabled = true; btn.textContent = 'creating…';
+  out.classList.remove('hidden');
+  out.innerHTML = '<div class="muted" style="font-size:11px">running <span class="mono">gitlive init</span>…</div>';
+  try {
+    const r = await api.call('POST', '/api/apps', body);
+    out.innerHTML =
+      `<div class="row" style="gap:8px;align-items:center;margin-bottom:6px"><span class="pill up">registered</span><b style="color:var(--txt)">${escapeHtml(r.name)}</b><span class="tag">${escapeHtml(r.mode)}</span>${r.port ? `<span class="tag cy">port ${escapeHtml(String(r.port))}</span>` : ''}</div>` +
+      `<div class="muted" style="font-size:11.5px;line-height:1.6;margin-bottom:8px">It is on the board now — it goes live on its first push. Paste this in a terminal (in that folder):</div>` +
+      `<div class="row" style="gap:6px;align-items:center;margin-bottom:10px"><input class="inp mono" id="na-push" value="${escapeHtml(r.pushHint)}" readonly style="flex:1;min-width:200px;font-size:11px"><button class="mini-btn" id="btn-na-copy">copy</button></div>` +
+      `<div class="scrollwin" style="max-height:220px"><pre class="mono" style="font-size:10.5px;white-space:pre-wrap;margin:0;color:var(--dim)">${escapeHtml(r.log || '(no output)')}</pre></div>` +
+      `<div class="row" style="gap:8px;margin-top:10px"><button class="btn small primary" id="btn-na-open">open it</button><button class="btn small" id="btn-na-another">register another</button></div>`;
+    toast('registered ' + r.name + ' — push to deploy');
+    const copy = $('#btn-na-copy');
+    if (copy) copy.addEventListener('click', () => {
+      const inp = $('#na-push');
+      inp.select(); try { document.execCommand('copy'); } catch { /* clipboard denied — the field is selectable anyway */ }
+      toast('command copied');
+    });
+    const open = $('#btn-na-open');
+    if (open) open.addEventListener('click', () => { closeNewApp(); showDetail(r.name); });
+    const another = $('#btn-na-another');
+    if (another) another.addEventListener('click', () => { naState.dirty.clear(); openNewApp(); });
+    loadApps();
+  } catch (err) {
+    const log = err.details && err.details.log ? err.details.log : '';
+    // re-pointing an existing app is allowed, but never silently: the name
+    // collided, so the owner is asked in the same breath
+    const askReconfigure = err.code === 'CONFLICT' && !reconfigure;
+    out.innerHTML =
+      `<div class="row" style="gap:8px;align-items:center;margin-bottom:6px"><span class="pill down">not created</span><b style="color:var(--txt)">${escapeHtml(err.message)}</b></div>` +
+      (log ? `<div class="scrollwin" style="max-height:220px"><pre class="mono" style="font-size:10.5px;white-space:pre-wrap;margin:0;color:var(--dim)">${escapeHtml(log)}</pre></div>` : '') +
+      (askReconfigure
+        ? `<div class="row" style="gap:8px;align-items:center;margin-top:8px"><button class="btn small" id="btn-na-reconf">point it at this folder instead</button><span class="muted" style="font-size:11px">the app keeps its history, backups and secrets — only the source folder and commands change.</span></div>`
+        : '') +
+      (askReconfigure ? '' : `<div class="muted" style="font-size:11px;margin-top:8px">Nothing was left half-done: a refused <span class="mono">init</span> leaves no repo and no registry row behind.</div>`);
+    const reconf = $('#btn-na-reconf');
+    if (reconf) reconf.addEventListener('click', () => naCreate(true));
+  } finally {
+    btn.disabled = false; btn.textContent = '＋ create it';
+  }
+}
 
 async function loadDetail() {
   const name = state.detail;
   if (!name) return;
   try {
     const st = await api.call('GET', '/api/apps/' + encodeURIComponent(name));
+    if (state.detail !== name) return; // the owner already opened another app
     window.__gitliveDetailState = st;
     const logs = await api.call('GET', '/api/apps/' + encodeURIComponent(name) + '/logs');
+    if (state.detail !== name) return;
+    const buAll = await api.call('GET', '/api/backups').catch(() => ({ apps: [] }));
+    const bu = (buAll.apps || []).find((x) => x.name === name) || null;
     state.lastSync = new Date();
     $('#detail-cwd').textContent = st.cwd || '';
     const heroChips = [];
@@ -2004,13 +2627,27 @@ async function loadDetail() {
     if (st.sandbox) heroChips.push('<span class="tag" style="color:var(--vio);border-color:rgba(143,123,255,.4)">practice · disposable</span>');
     $('#detail-herochips').innerHTML = heroChips.join('');
     $('#detail-kicker').textContent = (st.connect ? 'app · connect mode' : st.safe ? 'app · safe blue-green' : 'app · plain mode') + ' · last sync ' + state.lastSync.toLocaleTimeString();
+    const hist = st.history || [];
     $('#detail-actions').innerHTML =
       `<button class="btn small" data-act="deploy">▲ deploy</button>
        <button class="btn small danger" data-act="stop">■ stop</button>
-       <button class="btn small" data-act="rollback">⟲ rollback</button>
+       <button class="btn small" data-act="rollback" title="restores the last successful commit${hist.length ? ' — the ledger shows which' : ''}">⟲ rollback${(() => { const ok = hist.find((h) => h.outcome === 'success'); return ok && ok.commit ? ' → ' + escapeHtml(String(ok.commit).slice(0, 8)) : ''; })()}</button>
+       <button class="btn small" data-diag="1">🔍 diagnose</button>
        <button class="btn small" id="btn-refresh-detail">↻</button>`;
+    const diagBtn = document.querySelector('#detail-actions [data-diag]');
+    if (diagBtn) diagBtn.addEventListener('click', () => runDiagnose(name));
+    if (st.alive === false && !state.diagRan) { state.diagRan = true; runDiagnose(name); } // down app: the chain runs itself once per open
+    if (st.alive !== false) state.diagRan = false;
     for (const btn of document.querySelectorAll('#detail-actions button[data-act]')) {
       btn.addEventListener('click', async () => {
+        const act = btn.dataset.act;
+        // destructive actions ask twice — the cockpit rule
+        if ((act === 'stop' || act === 'rollback') && !btn.dataset.confirm) {
+          btn.dataset.confirm = '1';
+          btn.textContent = act === 'stop' ? 'sure? stop it' : 'sure? roll it back';
+          setTimeout(() => { if (btn.isConnected) { delete btn.dataset.confirm; btn.textContent = act === 'stop' ? '■ stop' : '⟲ rollback'; } }, 3000);
+          return;
+        }
         btn.disabled = true;
         try {
           const r = await api.call('POST', `/api/apps/${encodeURIComponent(name)}/${btn.dataset.act}`, {});
@@ -2022,7 +2659,7 @@ async function loadDetail() {
         } catch (err) {
           toast(`[${btn.dataset.act}] failed: ${err.message}`);
           $('#detail-status').insertAdjacentHTML('beforeend', `<div class="flash err">${escapeHtml(err.message)}</div>`);
-        } finally { btn.disabled = false; }
+        } finally { btn.disabled = false; if (btn.isConnected && btn.dataset.confirm) { delete btn.dataset.confirm; btn.textContent = act === 'stop' ? '■ stop' : '⟲ rollback'; } }
       });
     }
     $('#btn-refresh-detail').addEventListener('click', loadDetail);
@@ -2064,7 +2701,24 @@ async function loadDetail() {
       : upNow
         ? '<span class="pill up">running</span>'
         : '<span class="pill down">stopped</span>';
-    const hist = st.history || [];
+    // the 4s poll rebuilds the detail status — never let it eat what the
+    // owner is typing (env keys/values, graduate domain, schedule fields)
+    const detailSnap = (() => {
+      const host = $('#detail-status');
+      if (!host) return null;
+      const ATTRS = ['data-env-key', 'data-env-val', 'data-gd-inp', 'data-sch-cron', 'data-sch-cmd', 'data-pol-max', 'data-pol-maint'];
+      const values = {};
+      for (const el of host.querySelectorAll('input, textarea, select')) {
+        const attr = ATTRS.find((a) => el.hasAttribute(a));
+        if (!attr && el.tagName === 'SELECT') continue; // the mode select is hydrated, not typed
+        values[attr || el.className || el.id || el.type || '?'] = el.value;
+      }
+      let focusKey = null;
+      if (document.activeElement && host.contains(document.activeElement)) {
+        focusKey = ATTRS.find((a) => document.activeElement.hasAttribute(a)) || null;
+      }
+      return { values, focusKey };
+    })();
     $('#detail-status').innerHTML = `
       ${proxyHint ? `<div class="flash err" style="margin:0 0 12px">⚠ public proxy is down — backend slots may be healthy but :${escapeHtml(String(st.publicPort || '?'))} is dead. Fix: run <b>gitlive restart ${escapeHtml(name)}</b> (or deploy) on the node.</div>` : ''}
       <div class="row" style="margin:8px 0 18px">
@@ -2073,16 +2727,49 @@ async function loadDetail() {
         <span class="spacer"></span>
         ${safe ? `<span class="mono" style="font-size:11px;color:var(--dim)">slot A/B · <span style="color:var(--cy)">${escapeHtml(String(st.activeSlot || '—'))}</span></span>` : ''}
       </div>
+      <div id="detail-insights"></div>
       <div class="grid2">
         <div class="card" style="margin:0">
           <div class="kv">
             <div><b>start cmd</b><span class="v">${escapeHtml(st.startCmd || '—')}</span></div>
             <div><b>source</b><span class="v">${escapeHtml(st.cwd || '—')}</span></div>
+            ${st.connect ? '' : `<div><b>push</b><span class="v"><span class="mono" style="font-size:11px">cd ${escapeHtml(st.cwd || '~')} && git push</span><button class="mini-btn zcopy" data-copy="cd ${escapeHtml((st.cwd || '~').replace(/"/g, '\\"'))} && git push" title="copy the push command">⧉</button></span></div>`}
             <div><b>run dir</b><span class="v">${escapeHtml(st.runPath || '—')}</span></div>
+            <div><b>resources</b><span class="v" id="detail-res"><span class="muted" style="font-size:10.5px">reading…</span></span></div>
+            <div><b>reliability</b><span class="v" id="detail-rel"><span class="muted" style="font-size:10.5px">reading the health history…</span></span></div>
+            ${st.connect ? '' : `<div><b>agent policy</b><span class="v" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <select class="inp" data-pol-mode style="width:118px" title="off = hands off · watch = diagnose + recommend only · repair = restart, verified">
+                <option value="repair">repair</option><option value="watch">watch</option><option value="off">off</option>
+              </select>
+              <input class="inp" data-pol-max placeholder="max/hour" style="width:86px" spellcheck="false">
+              <input class="inp" data-pol-maint placeholder="window 22:00-06:00" style="width:150px" spellcheck="false">
+              <button class="mini-btn" data-pol-save>save policy</button>
+              <span id="detail-backoff" class="muted" style="font-size:10.5px"></span>
+            </span></div>`}
             ${safe ? `<div><b>health path</b><span class="v cy">${escapeHtml(st.healthPath || '/')}</span></div>` : ''}
             ${safe ? `<div><b>ports a/b</b><span class="v">${escapeHtml(String(st.portA))} / ${escapeHtml(String(st.portB))} <span style="color:var(--faint)">pub ${escapeHtml(String(st.publicPort))}</span></span></div>` : ''}
             <div><b>secrets</b><span class="v ${st.hasSecrets ? 'mint' : ''}">${st.hasSecrets ? 'present' : 'none'}</span></div>
+            <div><b>environment</b><span class="v" style="display:block">
+              <span id="detail-secret-keys" class="mono" style="font-size:10.5px;color:var(--dim);display:block">reading names…</span>
+              <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+                <input class="inp" data-env-key placeholder="KEY" style="width:130px" spellcheck="false">
+                <input class="inp" data-env-val placeholder="value — typed by you, never shown back" style="flex:1;min-width:130px" spellcheck="false">
+                <button class="mini-btn" data-env-set>set</button>
+              </div>
+              <div id="env-pending" class="hidden" style="margin-top:6px;font-size:10.5px;color:var(--warn)">changes saved but not running — <button class="mini-btn" data-env-restart>↻ restart to apply</button></div>
+              <div class="muted" style="font-size:10px;margin-top:4px">values never leave this machine's file — the UI sets them, it cannot read them back</div>
+            </span></div>
+            ${st.connect ? '' : `<div><b>app jobs</b><span class="v" id="detail-appjobs"><span class="muted" style="font-size:10.5px">reading…</span></span></div>`}
+            ${st.connect ? '' : `<div><b>backups</b><span class="v" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${bu && bu.snapshots ? `<span class="chip ${bu.verified ? 'on' : ''}" style="font-size:10px">${bu.snapshots} snapshot${bu.snapshots === 1 ? '' : 's'} · ${escapeHtml(String(bu.latest && bu.latest.snapshot || '').slice(0, 8))}${bu.verified ? ' · drilled ✓' : ' · not drilled'}</span>` : '<span class="muted" style="font-size:10.5px">never backed up — your data deserves better</span>'}<button class="mini-btn" data-bu-run1="${escapeHtml(name)}">back up</button>${bu && bu.snapshots ? `<button class="mini-btn" data-bu-verify1="${escapeHtml(name)}">drill restore</button>` : ''}</span></div>`}
+            ${st.connect ? '' : `<div><b>restore</b><span class="v" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:10.5px">a snapshot into a directory you name (never into live data):</span><input class="inp" data-restore-to placeholder="/path/for/the/restore" style="flex:1;min-width:160px" spellcheck="false"><button class="mini-btn" data-restore-btn="${escapeHtml(name)}">restore</button></span></div>`}
+            <div><b>delete</b><span class="v" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:10.5px">type the app name to delete it — bare repo, run dir and secrets file go with it:</span><input class="inp" data-rm-confirm placeholder="${escapeHtml(name)}" style="width:130px" spellcheck="false"><button class="mini-btn" data-rm-btn="${escapeHtml(name)}" style="color:var(--bad);border-color:color-mix(in srgb, var(--bad) 40%, transparent)">delete app</button></span></div>
             ${st.domains && st.domains.length ? `<div><b>domains</b><span class="v">${st.domains.map((d) => st.primaryDomain === d ? '<span style="color:var(--mint)">' + escapeHtml(d) + ' ★own</span>' : escapeHtml(d)).join(', ')}${st.graduatedFrom ? ' <span style="color:var(--faint)">· graduated from ' + escapeHtml(name) + '.' + escapeHtml(st.graduatedFrom) + '</span>' : ''}</span></div>` : ''}
+            <div><b>schedule</b><span class="v" style="display:block">${st.schedule
+              ? `<span class="mono" style="font-size:10.5px;color:var(--cy)">${escapeHtml(st.schedule.cron)}</span><span class="mono muted" style="font-size:10.5px;display:block;overflow-wrap:anywhere">${escapeHtml(st.schedule.cmd)}</span><span class="muted" style="font-size:10px">${st.schedule.enabled === false ? 'paused' : 'runs on this machine — every fire lands in jobs + events'}</span>`
+              : '<span class="muted" style="font-size:10.5px">none — runs a command on this machine\'s clock</span>'}
+              <span class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><input class="inp" data-sch-cron placeholder="cron: 5 fields (min h day mon dow)" style="width:220px" spellcheck="false" value="${escapeHtml(st.schedule ? st.schedule.cron : '')}"><input class="inp" data-sch-cmd placeholder="command" style="flex:1;min-width:140px" spellcheck="false" value="${escapeHtml(st.schedule ? st.schedule.cmd : '')}"><button class="mini-btn" data-sch-save>save</button>${st.schedule ? '<button class="mini-btn" data-sch-remove>remove</button>' : ''}</span>
+            </span></div>
+            ${st.domains && st.domains.length && !st.primaryDomain ? `<div><b>graduate</b><span class="v" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:10.5px">make the name yours — your own domain, nobody can take it away:</span><input class="inp" data-gd-inp placeholder="your-own-domain.com" style="width:180px" spellcheck="false"><button class="mini-btn" data-grad="${escapeHtml(name)}">graduate →</button></span></div>` : ''}
           </div>
         </div>
         <div class="card" style="margin:0">
@@ -2096,12 +2783,327 @@ async function loadDetail() {
           </div>
         </div>
       </div>
+      <div class="card" style="margin:14px 0 0">
+        <div class="row" style="margin-bottom:8px">
+          <div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase">this app's timeline · from every receipt on disk</div>
+          <span class="spacer"></span>
+          <span class="muted" style="font-size:10.5px">deploys · backups · agent actions · jobs</span>
+        </div>
+        <div class="scrollwin" id="detail-timeline" style="max-height:220px"><span class="muted" style="font-size:11px">reading…</span></div>
+      </div>
       <div id="detail-health"></div>`;
+    // restore the owner's typing + caret after the poll rebuild
+    if (detailSnap) {
+      for (const [attr, val] of Object.entries(detailSnap.values || {})) {
+        const el = document.querySelector('#detail-status [' + attr + ']');
+        if (el) el.value = val;
+      }
+      if (detailSnap.focusKey) {
+        const el = document.querySelector('#detail-status [' + detailSnap.focusKey + ']');
+        if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch { /* not text-like */ } }
+      }
+    }
     const logEl = $('#detail-log');
-    logEl.innerHTML = logs.exists && logs.text
-      ? escapeHtml(logs.text)
-      : '<div class="termempty"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg><div><b>No deploy log on record</b><span>the next git push writes the first lines here</span></div></div>';
+    let rawLog = logs.exists && logs.text ? String(logs.text) : null;
+    const drawLog = () => {
+      if (!rawLog) {
+        logEl.innerHTML = '<div class="termempty"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg><div><b>No deploy log on record</b><span>the next git push writes the first lines here</span></div></div>';
+        return;
+      }
+      const q = (($('#log-filter') || {}).value || '').trim().toLowerCase();
+      if (!q) { logEl.innerHTML = escapeHtml(rawLog); return; }
+      const lines = rawLog.split('\n');
+      const hits = lines.filter((l) => l.toLowerCase().includes(q));
+      logEl.innerHTML = hits.length
+        ? escapeHtml(hits.join('\n'))
+        : '<div class="muted" style="font-size:11px">no lines match “' + escapeHtml(q) + '” — clear the search to see the whole log</div>';
+    };
+    drawLog();
+    const lf = $('#log-filter');
+    if (lf && !lf.dataset.wired) { lf.dataset.wired = '1'; lf.addEventListener('input', drawLog); }
     logEl.scrollTop = logEl.scrollHeight;
+    // copy chips inside the detail view (fresh elements each render)
+    for (const el of document.querySelectorAll('#detail-view .zcopy')) {
+      el.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(el.dataset.copy); toast('command copied — paste it in a terminal'); }
+        catch { toast('copy blocked by the browser'); }
+      });
+    }
+    // this app's own jobs (backups, drills, cron) — the machine area filters
+    // them out by the two-area law, so they are shown HERE
+    const appJobsEl = $('#detail-appjobs');
+    if (appJobsEl) {
+      api.call('GET', '/api/jobs')
+        .then((j) => {
+          const mine = appJobs(j.jobs || [], name).slice(0, 4);
+          appJobsEl.innerHTML = mine.length
+            ? mine.map((x) => `<span class="chip ${x.endedAt ? (x.ok ? 'on' : 'off') : ''}" style="font-size:10px;margin-right:4px">${escapeHtml(String(x.label || x.kind || 'job')).replace(escapeHtml(name), '')} ${x.endedAt ? (x.ok ? '✓' : '✕') : '…'}</span>`).join('')
+            : '<span class="muted" style="font-size:10.5px">no jobs yet — a backup or drill shows here</span>';
+        })
+        .catch(() => { appJobsEl.textContent = 'unavailable'; });
+    }
+    // v4: this app's measured record — reliability, its policy, its own
+    // timeline — plus the machine-level findings that name this app
+    const relEl = $('#detail-rel');
+    if (relEl && !st.connect) {
+      api.call('GET', '/api/apps/' + encodeURIComponent(name) + '/reliability')
+        .then((r) => {
+          if (state.detail !== name) return;
+          const w = (label) => (r.windows || []).find((x) => x.label === label) || {};
+          const day = w('24h');
+          const week = w('7d');
+          const fmt = (ms) => window.intelFmtDur ? window.intelFmtDur(ms) : (ms == null ? '—' : Math.round(ms / 60000) + 'm');
+          relEl.innerHTML =
+            (day.insufficient
+              ? '<span class="muted" style="font-size:10.5px">not enough samples yet in 24h — ' + escapeHtml(day.note || '') + '</span>'
+              : '<span class="mono" style="font-size:11px;color:' + (day.uptimePct >= 99 ? 'var(--mint)' : day.uptimePct >= 90 ? 'var(--warn)' : 'var(--bad)') + '">' + day.uptimePct + '% up (24h)</span>')
+            + (week.uptimePct != null
+              ? (week.insufficient
+                ? ' <span class="muted" style="font-size:10.5px">· 7d: ' + escapeHtml(week.note || 'not enough data') + '</span>'
+                : ' <span class="mono" style="font-size:11px;color:var(--dim)">· ' + week.uptimePct + '% (7d' + (week.rawCoveragePct != null && week.rawCoveragePct < 95 ? ', ' + Math.round(week.rawCoveragePct) + '% of the window measured' : '') + ')</span>')
+              : '')
+            + ' <span class="muted" style="font-size:10.5px">· ' + (day.samples || 0) + ' samples' + (day.coveragePct != null ? ' (' + Math.round(day.coveragePct) + '% of the window)' : '') + '</span>'
+            + (day.failures ? ' <span class="muted" style="font-size:10.5px">· ' + day.failures + ' outage(s)' + (day.longestOutageMs ? ', longest ' + fmt(day.longestOutageMs) : '') + (day.mttrMs ? ', recovers in ' + fmt(day.mttrMs) : '') + '</span>' : ' <span class="muted" style="font-size:10.5px">· no outage in 24h</span>')
+            + (day.mtbfMs ? ' <span class="muted" style="font-size:10.5px">· MTBF ' + fmt(day.mtbfMs) + '</span>' : '');
+          const modeSel = document.querySelector('#detail-status [data-pol-mode]');
+          if (modeSel && !modeSel.dataset.touched) modeSel.value = (r.policy && r.policy.mode) || 'repair';
+          const maxEl = document.querySelector('#detail-status [data-pol-max]');
+          if (maxEl && !maxEl.dataset.touched) maxEl.value = (r.policy && r.policy.maxActionsPerHour) || '';
+          const maintEl = document.querySelector('#detail-status [data-pol-maint]');
+          if (maintEl && !maintEl.dataset.touched) maintEl.value = (r.policy && (r.policy.maintenance || [])[0]) ? r.policy.maintenance[0].from + '-' + r.policy.maintenance[0].to : '';
+          const bo = $('#detail-backoff');
+          if (bo) {
+            if (r.backoff && r.backoff.failures) {
+              bo.innerHTML = '<span style="color:var(--warn)">backing off after ' + r.backoff.failures + ' failed repair(s)' + (r.backoff.blocked ? ' — next attempt ' + escapeHtml(String(r.backoff.nextAllowedAt).slice(11, 16)) + ' UTC' : '') + '</span>';
+            } else if (r.maintenanceNow) {
+              bo.innerHTML = '<span style="color:var(--vio)">inside a maintenance window (' + escapeHtml(r.maintenanceNow.from + '–' + r.maintenanceNow.to) + ') — repairs suspended</span>';
+            } else bo.textContent = '';
+          }
+          const tl = $('#detail-timeline');
+          if (tl) {
+            tl.innerHTML = (r.timeline || []).length
+              ? r.timeline.map((e) => '<div class="row" style="gap:8px;padding:3px 0;border-bottom:1px solid var(--line)">'
+                + '<span class="mono" style="font-size:10px;color:var(--faint);min-width:104px">' + escapeHtml(String(e.at).replace('T', ' ').slice(0, 16)) + '</span>'
+                + '<span class="chip ' + (e.severity === 'bad' ? 'off' : e.severity === 'warn' ? 'cy' : '') + '" style="font-size:9.5px">' + escapeHtml(e.kind) + '</span>'
+                + '<span style="font-size:11.5px;color:var(--txt);flex:1;min-width:140px">' + escapeHtml(e.title) + '</span>'
+                + '<span class="muted" style="font-size:10.5px">' + escapeHtml((e.detail || '').slice(0, 90)) + '</span></div>').join('')
+              : '<div class="muted" style="font-size:11px">nothing on record for this app yet.</div>';
+          }
+        })
+        .catch((err) => { if (relEl) relEl.innerHTML = '<span class="muted" style="font-size:10.5px">' + escapeHtml(err.message) + '</span>'; });
+    }
+    // findings that name this app, shown where the app lives
+    const insEl = $('#detail-insights');
+    if (insEl) {
+      const mine = ((state.intel && state.intel.insights) || []).filter((i) => i.app === name);
+      insEl.innerHTML = mine.length ? mine.map((i) => insightCard(i, { showApp: false })).join('') : '';
+    }
+    // policy save (ask nothing — the owner is explicit here; the change is receipted)
+    const polSave = document.querySelector('#detail-status [data-pol-save]');
+    if (polSave) polSave.addEventListener('click', async () => {
+      const mode = (document.querySelector('#detail-status [data-pol-mode]') || {}).value || 'repair';
+      const max = (document.querySelector('#detail-status [data-pol-max]') || {}).value || '';
+      const maint = ((document.querySelector('#detail-status [data-pol-maint]') || {}).value || '').trim();
+      const policy = { mode };
+      if (max.trim()) policy.maxActionsPerHour = Number(max);
+      if (maint) {
+        const m = maint.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+        if (!m) { toast('maintenance window wants HH:MM-HH:MM (or leave it empty)'); return; }
+        policy.maintenance = [{ from: m[1], to: m[2] }];
+      } else policy.maintenance = [];
+      polSave.disabled = true; polSave.textContent = 'saving…';
+      try {
+        await api.call('PUT', '/api/policies', { app: { name, policy } });
+        toast(name + ': agents set to ' + mode + (maint ? ' · maintenance ' + maint : ''));
+      } catch (err) { toast('policy refused: ' + err.message); }
+      finally { polSave.disabled = false; polSave.textContent = 'save policy'; }
+    });
+    for (const sel of document.querySelectorAll('#detail-status [data-pol-mode], #detail-status [data-pol-max], #detail-status [data-pol-maint]')) {
+      sel.addEventListener('input', () => { sel.dataset.touched = '1'; });
+      sel.addEventListener('change', () => { sel.dataset.touched = '1'; });
+    }
+    // resources: RSS + uptime + sizes — honest numbers, refreshed per open
+    const resEl = $('#detail-res');
+    if (resEl) {
+      api.call('GET', '/api/apps/' + encodeURIComponent(name) + '/stats')
+        .then((s) => {
+          const fmtB = (b) => b == null ? '—' : b < 1024 * 1024 ? Math.round(b / 1024) + ' KB' : (b / 1024 / 1024).toFixed(1) + ' MB';
+          resEl.innerHTML = (s.rssMb != null ? '<span class="mono" style="font-size:11px">' + s.rssMb + ' MB rss</span>' : '') +
+            (s.uptime ? ' <span class="mono" style="font-size:11px">· up ' + escapeHtml(s.uptime) + '</span>' : '') +
+            (s.dataBytes != null ? ' <span class="mono" style="font-size:11px">· data ' + fmtB(s.dataBytes) + '</span>' : '') +
+            (s.logBytes != null ? ' <span class="mono" style="font-size:11px">· log ' + fmtB(s.logBytes) + '</span>' : '') +
+            (s.diskFreeMb != null ? ' <span class="mono" style="font-size:11px">· disk free ' + (s.diskFreeMb >= 1024 ? (s.diskFreeMb / 1024).toFixed(1) + ' GB' : s.diskFreeMb + ' MB') + '</span>' : '');
+          if (!resEl.textContent.trim()) resEl.innerHTML = '<span class="muted" style="font-size:10.5px">no live numbers yet</span>';
+        })
+        .catch(() => { resEl.textContent = 'unavailable'; });
+    }
+    // clear the deploy log (ask twice — disk-full protection)
+    const clrBtn = $('#btn-log-clear');
+    const capSel2 = $('#log-cap');
+    if (capSel2 && !capSel2.dataset.wired) {
+      capSel2.dataset.wired = '1';
+      capSel2.addEventListener('change', async () => {
+        try {
+          const r = await api.call('POST', '/api/apps/' + encodeURIComponent(name) + '/logs', { logMaxMb: Number(capSel2.value) || 0 });
+          toast(r.note || 'log cap updated');
+        } catch (err) { toast('cap failed: ' + err.message); }
+      });
+    }
+    if (clrBtn && !clrBtn.dataset.wired) {
+      clrBtn.dataset.wired = '1';
+      clrBtn.addEventListener('click', async () => {
+        if (!clrBtn.dataset.confirm) {
+          clrBtn.dataset.confirm = '1'; clrBtn.textContent = 'sure? empties it';
+          setTimeout(() => { if (clrBtn.isConnected) { delete clrBtn.dataset.confirm; clrBtn.textContent = 'clear log'; } }, 3000);
+          return;
+        }
+        clrBtn.disabled = true;
+        try {
+          await api.call('POST', '/api/apps/' + encodeURIComponent(name) + '/logs', {});
+          toast('deploy log cleared — the next push writes fresh lines');
+          loadDetail();
+        } catch (err) { toast('clear failed: ' + err.message); clrBtn.disabled = false; clrBtn.textContent = 'clear log'; }
+      });
+    }
+    // restore a snapshot to a named directory (never into live data)
+    const restoreBtn = document.querySelector('#detail-view [data-restore-btn]');
+    if (restoreBtn) restoreBtn.addEventListener('click', async () => {
+      const to = (document.querySelector('#detail-view [data-restore-to]') || {}).value || '';
+      if (!to) { toast('type the directory to restore into first'); return; }
+      restoreBtn.disabled = true; restoreBtn.textContent = 'restoring…';
+      try {
+        const r = await api.call('POST', '/api/apps/' + encodeURIComponent(name) + '/restore', { to });
+        toast('restored to ' + r.to + ' — move it into place yourself, deliberately');
+        restoreBtn.textContent = 'restored ✓';
+      } catch (err) { toast('restore failed: ' + err.message); restoreBtn.disabled = false; restoreBtn.textContent = 'restore'; }
+    });
+    // delete the app (the name must be typed back; the server enforces it too)
+    const rmBtn = document.querySelector('#detail-view [data-rm-btn]');
+    if (rmBtn) rmBtn.addEventListener('click', async () => {
+      const typed = (document.querySelector('#detail-view [data-rm-confirm]') || {}).value || '';
+      if (typed !== name) { toast('type the app name exactly to confirm the delete'); return; }
+      rmBtn.disabled = true; rmBtn.textContent = 'deleting…';
+      try {
+        await api.call('POST', '/api/apps/' + encodeURIComponent(name) + '/rm', { confirm: typed });
+        toast('[' + name + '] deleted — bare repo, run dir and secrets file are gone');
+        setView('apps');
+      } catch (err) { toast('delete failed: ' + err.message); rmBtn.disabled = false; rmBtn.textContent = 'delete app'; }
+    });
+    // schedule: cron + one command, run by the plane's own ticker
+    const schSave = document.querySelector('#detail-view [data-sch-save]');
+    if (schSave) schSave.addEventListener('click', async () => {
+      const cron = (document.querySelector('#detail-view [data-sch-cron]') || {}).value;
+      const cmd = (document.querySelector('#detail-view [data-sch-cmd]') || {}).value;
+      schSave.disabled = true; schSave.textContent = 'saving…';
+      try {
+        await api.call('PUT', '/api/apps/' + encodeURIComponent(name) + '/schedule', { cron, cmd });
+        toast('schedule saved — every fire lands in jobs + events');
+        loadDetail();
+      } catch (err) { toast('schedule failed: ' + err.message); schSave.disabled = false; schSave.textContent = 'save'; }
+    });
+    const schRemove = document.querySelector('#detail-view [data-sch-remove]');
+    if (schRemove) schRemove.addEventListener('click', async () => {
+      if (!schRemove.dataset.confirm) { schRemove.dataset.confirm = '1'; schRemove.textContent = 'sure?'; setTimeout(() => { if (schRemove.isConnected) { delete schRemove.dataset.confirm; schRemove.textContent = 'remove'; } }, 3000); return; }
+      schRemove.disabled = true;
+      try {
+        await api.call('DELETE', '/api/apps/' + encodeURIComponent(name) + '/schedule');
+        toast('schedule removed');
+        loadDetail();
+      } catch (err) { toast('remove failed: ' + err.message); schRemove.disabled = false; schRemove.textContent = 'remove'; }
+    });
+    // log retention cap (the logs response carries capBytes)
+    const capSel = $('#log-cap');
+    if (capSel && logs.capBytes != null) capSel.value = String(logs.capBytes / 1024 / 1024);
+    // secret key NAMES only — values never cross the wire; the env editor
+    // sets and deletes, the pending banner knows when a restart is owed
+    const skEl = $('#detail-secret-keys');
+    const drawEnv = (s) => {
+      if (!skEl) return;
+      skEl.innerHTML = s.count
+        ? s.keys.map((k) => `<span class="tag" style="margin:2px 4px 2px 0;font-size:10px">${escapeHtml(k)}<button class="mini-btn" data-env-del="${escapeHtml(k)}" style="margin-left:6px">✕</button></span>`).join('')
+        : '<span class="muted">no keys yet — add one above</span>';
+      for (const b of skEl.querySelectorAll('[data-env-del]')) {
+        b.addEventListener('click', async () => {
+          if (!b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = 'sure?'; setTimeout(() => { if (b.isConnected) { delete b.dataset.confirm; b.textContent = '✕'; } }, 3000); return; }
+          b.disabled = true;
+          try {
+            await api.call('PUT', '/api/apps/' + encodeURIComponent(name) + '/env', { del: [b.dataset.envDel] });
+            toast('key deleted — restart to apply');
+            refreshEnv();
+          } catch (err) { toast('delete failed: ' + err.message); }
+        });
+      }
+      const pend = $('#env-pending');
+      if (pend) pend.classList.toggle('hidden', !s.pendingRestart);
+    };
+    const refreshEnv = async () => {
+      try {
+        const s = await api.call('GET', '/api/apps/' + encodeURIComponent(name) + '/secrets');
+        drawEnv(s);
+      } catch { if (skEl) skEl.textContent = 'unavailable'; }
+    };
+    if (skEl) {
+      api.call('GET', '/api/apps/' + encodeURIComponent(name) + '/secrets')
+        .then(drawEnv)
+        .catch(() => { skEl.textContent = 'unavailable'; });
+      if (st.envChangedAt) $('#env-pending') && $('#env-pending').classList.remove('hidden');
+    }
+    const setBtn = document.querySelector('#detail-view [data-env-set]');
+    if (setBtn) setBtn.addEventListener('click', async () => {
+      const key = (document.querySelector('#detail-view [data-env-key]') || {}).value;
+      const val = (document.querySelector('#detail-view [data-env-val]') || {}).value;
+      if (!key) { toast('type a KEY first'); return; }
+      setBtn.disabled = true; setBtn.textContent = 'saving…';
+      try {
+        await api.call('PUT', '/api/apps/' + encodeURIComponent(name) + '/env', { set: { [key]: val } });
+        toast('saved — restart the app to apply');
+        const kv = document.querySelector('#detail-view [data-env-key]');
+        const vv = document.querySelector('#detail-view [data-env-val]');
+        if (kv) kv.value = ''; if (vv) vv.value = '';
+        refreshEnv();
+      } catch (err) { toast('set failed: ' + err.message); }
+      finally { setBtn.disabled = false; setBtn.textContent = 'set'; }
+    });
+    const rsBtn = document.querySelector('#detail-view [data-env-restart]');
+    if (rsBtn) rsBtn.addEventListener('click', async () => {
+      rsBtn.disabled = true; rsBtn.textContent = 'restarting…';
+      try {
+        await api.call('POST', '/api/apps/' + encodeURIComponent(name) + '/restart', {});
+        await api.call('PUT', '/api/apps/' + encodeURIComponent(name) + '/env', { apply: true });
+        toast('restarted with the new environment');
+        loadDetail();
+      } catch (err) { toast('restart failed: ' + err.message); rsBtn.disabled = false; rsBtn.textContent = '↻ restart to apply'; }
+    });
+    // per-app backups: run + drill, right on the card's detail
+    for (const el of document.querySelectorAll('#detail-view [data-bu-run1], #detail-view [data-bu-verify1]')) {
+      el.addEventListener('click', async () => {
+        const isVerify = Boolean(el.dataset.buVerify1);
+        el.disabled = true; el.textContent = isVerify ? 'drilling…' : 'backing up…';
+        try {
+          await api.call('POST', '/api/backup', { action: isVerify ? 'verify' : 'run', app: isVerify ? el.dataset.buVerify1 : el.dataset.buRun1 });
+          toast(isVerify ? 'restore drill running — receipts update in a moment' : 'backup running — the receipt appears in a moment');
+          setTimeout(loadDetail, 6000);
+        } catch (err) {
+          toast('backup failed: ' + err.message);
+          el.disabled = false; el.textContent = isVerify ? 'drill restore' : 'back up';
+        }
+      });
+    }
+    // graduation: borrowed label → the owner's own domain, right here
+    const gBtn = document.querySelector('#detail-view [data-grad]');    if (gBtn) gBtn.addEventListener('click', async () => {
+      const inp = document.querySelector('#detail-view [data-gd-inp]');
+      const domain = inp ? inp.value.trim() : '';
+      if (!domain) { toast('type the domain you own first — e.g. myapp.example.com'); return; }
+      gBtn.disabled = true; gBtn.textContent = 'graduating…';
+      try {
+        const r = await api.call('POST', '/api/apps/' + encodeURIComponent(name) + '/graduate', { domain });
+        toast('graduated — ' + domain + ' is now ' + name + '\'s canonical name');
+        loadApps(); loadDetail();
+      } catch (err) {
+        toast('graduate failed: ' + err.message);
+        gBtn.disabled = false; gBtn.textContent = 'graduate →';
+      }
+    });
     syncTag(Date.now() - (state.lastSync ? state.lastSync.getTime() : 0));
 
     // ── health history (#8): the visible meter — sampled locally, never
@@ -2153,6 +3155,7 @@ function setView(name) {
   // the inspector is the APP companion: visible in apps, gone in gitlive
   // (the gitlive document IS the canvas there, full width)
   $('#inspector').classList.toggle('hidden', machineMode);
+  if (machineMode) loadIntelView();
   if (appsMode) {
     if (!state.detail) {
       $('#inspector-empty').classList.remove('hidden');
@@ -2166,11 +3169,478 @@ function setView(name) {
   if (machineMode) {
     $('#inspector-empty').classList.add('hidden');
     $('#detail-view').classList.add('hidden');
-    loadMeshView(); loadPeersView(); loadNodesView(); loadEntryView(); loadKeysView(); loadEventsView(); loadSettingsView();
+    loadCheckup(); loadAgentsView(); loadMeshView(); loadPeersView(); loadNodesView(); loadEntryView(); loadKeysView(); loadEventsView(); loadSettingsView();
   }
 }
 for (const b of document.querySelectorAll('#opsnav button')) {
   b.addEventListener('click', () => setView(b.dataset.view));
+}
+document.addEventListener('click', (e) => {
+  const g = e.target.closest('[data-guide]');
+  if (g) openGuide(g.dataset.guide);
+});
+
+// ── the agents card: what the helpers did, and what they recommend ────────
+// ── v4 · intelligence: the machine's measured self-knowledge ─────────────
+// Two surfaces, split by the area law: the MACHINE section shows the score,
+// machine-level findings and the machine's own timeline; the PROJECTS board
+// carries the per-app findings, because a project's name belongs in projects.
+const SEV_CHIP = { high: 'off', medium: 'cy', low: '' };
+
+// same shape as control/intel.js fmtDur — one visible convention for durations
+window.intelFmtDur = function (ms) {
+  if (ms == null) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  if (h < 48) return h + 'h ' + (m % 60) + 'm';
+  return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+};
+
+function scoreBar(pct) {
+  if (pct == null) return '<span class="mono" style="color:var(--faint);font-size:10.5px">n/a</span>';
+  const filled = Math.max(0, Math.min(20, Math.round((pct / 100) * 20)));
+  const color = pct >= 90 ? 'var(--mint)' : pct >= 60 ? 'var(--warn)' : 'var(--bad)';
+  return '<span class="mono" style="font-size:10.5px;color:' + color + ';letter-spacing:-1px">' + '█'.repeat(filled) + '<span style="color:var(--faint)">' + '·'.repeat(20 - filled) + '</span></span>'
+    + '<span class="mono" style="font-size:10.5px;color:var(--dim);min-width:42px;text-align:right">' + pct + '%</span>';
+}
+
+function insightCard(i, { showApp = true } = {}) {
+  const ev = Object.entries(i.evidence || {}).filter(([, v]) => v != null && v !== '')
+    .map(([k, v]) => '<span class="chip" style="font-size:9.5px">' + escapeHtml(k.replace(/([A-Z])/g, ' $1').toLowerCase()) + ' · ' + escapeHtml(String(v).slice(0, 60)) + '</span>').join('');
+  // the card already shows the app as a chip — repeating it at the start of
+  // every title read like a stutter ("<app> <app> is down…")
+  const title = (showApp && i.app && String(i.title).startsWith(i.app + ' ')) ? String(i.title).slice(i.app.length + 1) : i.title;
+  return '<div style="border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;margin-bottom:7px;background:color-mix(in srgb, var(--' + (i.severity === 'high' ? 'bad' : i.severity === 'medium' ? 'warn' : 'vio') + ') 5%, transparent)">'
+    + '<div class="row" style="gap:7px;align-items:baseline;flex-wrap:wrap">'
+    + '<span class="chip ' + (SEV_CHIP[i.severity] || '') + '" style="font-size:9.5px">' + escapeHtml(i.severity) + '</span>'
+    + (showApp && i.app ? '<span class="appname" style="font-size:12px">' + escapeHtml(i.app) + '</span>' : '')
+    + '<span style="font-size:12.5px;color:var(--txt);flex:1;min-width:180px">' + escapeHtml(title) + '</span>'
+    + '<span class="muted mono" style="font-size:9.5px">' + escapeHtml(i.kind) + (i.samples ? ' · ' + i.samples + ' samples' : '') + '</span>'
+    + '</div>'
+    + '<div class="muted" style="font-size:11.5px;line-height:1.55;margin-top:4px">' + escapeHtml(i.detail || '') + '</div>'
+    + '<div class="row" style="gap:5px;flex-wrap:wrap;margin-top:6px">' + ev
+    + (i.action ? '<button class="mini-btn" data-intel-act="' + escapeHtml(i.action.kind) + '" data-intel-app="' + escapeHtml(i.action.app || '') + '">' + escapeHtml(i.action.label) + '</button>' : '')
+    + '</div></div>';
+}
+
+// one delegated handler for every insight action, in both areas
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-intel-act]');
+  if (!b) return;
+  const kind = b.dataset.intelAct;
+  const app = b.dataset.intelApp;
+  if (kind === 'app') { setView('apps'); showDetail(app); return; }
+  if (kind === 'backup') {
+    b.disabled = true; b.textContent = 'backing up…';
+    try { await api.call('POST', '/api/backup', { app }); toast('backup started for ' + app + ' — watch the jobs window'); }
+    catch (err) { toast('backup failed: ' + err.message); }
+    finally { b.disabled = false; b.textContent = 'back up now'; }
+    return;
+  }
+  if (kind === 'rollback') { setView('apps'); showDetail(app); setDetailTab('overview'); toast('rollback lives on the app\'s overview — asked twice, as always'); return; }
+  if (kind === 'log') { setView('apps'); showDetail(app); setDetailTab('logs'); return; }
+  if (kind === 'certs') { setView('machine'); setView('machine:settings'); return; }
+  if (kind === 'policy') { setView('apps'); showDetail(app); toast('the policy row is on the app\'s overview'); return; }
+});
+
+async function loadIntelView() {
+  const body = $('#intel-body');
+  if (!body) return;
+  const keepScroll = (() => { const w = body.querySelector('.scrollwin'); return w ? w.scrollTop : 0; })();
+  try {
+    const o = await api.call('GET', '/api/intel');
+    state.intel = o;
+    const sc = o.score || {};
+    const machineInsights = (o.insights || []).filter((i) => !i.app);
+    const appInsights = (o.insights || []).filter((i) => i.app);
+    const bandColor = sc.band === 'excellent' || sc.band === 'healthy' ? 'var(--mint)' : sc.band === 'degraded' ? 'var(--warn)' : sc.band === 'unknown' ? 'var(--faint)' : 'var(--bad)';
+    body.innerHTML =
+      '<div class="row" style="gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px">'
+      + '<div style="min-width:150px"><div class="mono" style="font-size:38px;line-height:1;color:' + bandColor + '">' + (sc.score == null ? '—' : sc.score) + '<span style="font-size:15px;color:var(--faint)">/100</span></div>'
+      + '<div class="kicker" style="margin-top:5px;color:' + bandColor + '">' + escapeHtml(sc.band || 'unknown') + '</div></div>'
+      + '<div style="flex:1;min-width:240px">' + (sc.factors || []).map((f) =>
+          '<div class="row" style="gap:8px;align-items:center;padding:2px 0">' + scoreBar(f.pct)
+          + '<span style="font-size:11.5px;color:var(--txt);min-width:132px">' + escapeHtml(f.label) + '</span>'
+          + '<span class="muted" style="font-size:10.5px;flex:1;min-width:120px">' + escapeHtml(f.detail) + '</span>'
+          + '<span class="mono" style="font-size:9.5px;color:var(--faint)">w' + f.weight + '</span></div>').join('')
+        + '<div class="muted mono" style="font-size:10px;margin-top:6px">' + escapeHtml(sc.formula || '') + '</div>'
+        + ((sc.excluded || []).length ? '<div class="muted" style="font-size:10.5px;margin-top:3px">excluded for lack of data (weight redistributed, never scored as zero): ' + escapeHtml(sc.excluded.join(', ')) + '</div>' : '')
+      + '</div></div>'
+      + '<div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin:10px 0 6px">machine findings</div>'
+      + (machineInsights.length ? machineInsights.map((i) => insightCard(i, { showApp: false })).join('')
+        : '<div class="muted" style="font-size:11.5px;margin-bottom:8px">nothing about the machine itself needs attention.</div>')
+      + (appInsights.length
+        ? '<div class="row" style="gap:8px;align-items:center;margin:8px 0 10px;flex-wrap:wrap"><span class="chip cy">' + appInsights.length + ' project finding' + (appInsights.length === 1 ? '' : 's') + '</span><span class="muted" style="font-size:11.5px">a project\'s name belongs in projects — they are on the board, with the same evidence.</span><button class="mini-btn" data-intel-goto-apps>open projects →</button></div>'
+        : '')
+      + '<div class="row" style="gap:8px;align-items:center;margin:10px 0 6px"><span style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase">machine timeline</span><span class="spacer"></span>'
+      + '<select class="inp" id="intel-tl-filter" style="width:150px"><option value="">everything</option><option value="job">jobs</option><option value="backup">backups</option><option value="policy">policies</option><option value="agent-repair,agent-diagnose">agents</option><option value="sessions-pruned,login,login-fail">sessions</option></select></div>'
+      + '<div class="scrollwin" id="intel-timeline" style="max-height:260px"><span class="muted" style="font-size:11px">reading the ledgers…</span></div>'
+      + '<div class="muted" style="font-size:10.5px;margin-top:6px">every line is a receipt already on disk — deploys and backups of a project appear on that project\'s card.</div>';
+    const goto = body.querySelector('[data-intel-goto-apps]');
+    if (goto) goto.addEventListener('click', () => setView('apps'));
+    const filter = body.querySelector('#intel-tl-filter');
+    if (filter) filter.addEventListener('change', () => loadIntelTimeline(filter.value));
+    await loadIntelTimeline('');
+    const w = body.querySelector('.scrollwin');
+    if (w && keepScroll) w.scrollTop = keepScroll;
+  } catch (err) {
+    body.innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
+  }
+}
+
+async function loadIntelTimeline(kinds) {
+  const box = $('#intel-timeline');
+  if (!box) return;
+  try {
+    const q = '/api/timeline?days=14&limit=120' + (kinds ? '&kinds=' + encodeURIComponent(kinds) : '');
+    const d = await api.call('GET', q);
+    // the machine timeline is the MACHINE's story: entries attributed to a
+    // project live on that project's card (two-area law)
+    const rows = (d.entries || []).filter((e) => !e.app);
+    box.innerHTML = rows.length
+      ? rows.map((e) => '<div class="row" style="gap:8px;padding:3px 0;border-bottom:1px solid var(--line)">'
+        + '<span class="mono" style="font-size:10px;color:var(--faint);min-width:104px">' + escapeHtml(String(e.at).replace('T', ' ').slice(0, 16)) + '</span>'
+        + '<span class="chip ' + (e.severity === 'bad' ? 'off' : e.severity === 'warn' ? 'cy' : '') + '" style="font-size:9.5px">' + escapeHtml(e.kind) + '</span>'
+        + '<span style="font-size:11.5px;color:var(--txt);flex:1;min-width:150px">' + escapeHtml(e.title) + '</span>'
+        + '<span class="muted" style="font-size:10.5px;min-width:0">' + escapeHtml(e.detail || '') + '</span></div>').join('')
+      : '<div class="muted" style="font-size:11px">nothing in this window.</div>';
+  } catch (err) {
+    box.innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
+  }
+}
+
+// the projects board's intelligence strip: the app-level findings, with names,
+// where names belong
+async function loadAppsIntel(force) {
+  const host = $('#apps-intel');
+  if (!host) return;
+  try {
+    // the board polls every 4s; the findings come from thousands of history
+    // lines, so they are re-read on a slow cadence (60s) and re-rendered from
+    // the cache in between
+    const fresh = state.intel && state.intel.insights && !force && (Date.now() - (state.intelAt || 0) < 60000);
+    const o = fresh ? state.intel : await api.call('GET', '/api/intel');
+    state.intel = o;
+    state.intelAt = Date.now();
+    const mine = (o.insights || []).filter((i) => i.app);
+    if (!mine.length) { host.classList.add('hidden'); host.innerHTML = ''; return; }
+    host.classList.remove('hidden');
+    host.innerHTML = '<div class="kicker">what the machine noticed</div>'
+      + '<div class="muted" style="font-size:11.5px;margin:2px 0 8px">measured from the 1-minute health history and the deploy/backup receipts — each finding carries its evidence and its sample count.</div>'
+      + mine.slice(0, 6).map((i) => insightCard(i)).join('');
+  } catch { host.classList.add('hidden'); }
+}
+
+async function loadAgentsView() {
+  const body = $('#agents-body');
+  if (!body) return;
+  try {
+    const a = await api.call('GET', '/api/agents');
+    const color = (ok) => (ok === false ? 'var(--bad)' : 'var(--mint)');
+    const recs = (a.recommendations && a.recommendations.recommendations) || [];
+    const rows = a.recent || [];
+    body.innerHTML =
+      '<div class="chips" style="margin:0 0 10px">' +
+        (a.enabled ? '<span class="chip on">running · every ' + Math.round(a.intervalMs / 60000) + ' min</span>' : '<span class="chip off">switched off (GITLIVE_AGENTS=0)</span>') +
+        '<span class="chip">repairs ' + (a.counts ? a.counts.repair : 0) + '</span>' +
+        '<span class="chip">diagnoses ' + (a.counts ? a.counts.diagnose : 0) + '</span>' +
+        '<span class="chip">cap ' + a.maxActionsPerPass + '/pass · cooldown ' + Math.round(a.cooldownMs / 60000) + ' min</span>' +
+        (a.lastRunAt ? '<span class="chip">last pass ' + escapeHtml(timeAgo(a.lastRunAt)) + '</span>' : '') +
+      '</div>' +
+      (recs.length
+        ? '<div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin:2px 0 6px">recommendations — yours to accept</div><div class="scrollwin" style="max-height:150px;margin-bottom:10px">' + recs.map((r) => '<div class="kvrow" style="align-items:flex-start;gap:8px;padding:5px 2px"><span class="chip ' + (r.severity === 'high' ? 'off' : '') + '" style="font-size:10px">' + escapeHtml(r.kind) + '</span><span class="muted" style="font-size:11.5px;flex:1">' + escapeHtml(r.text) + '</span></div>').join('') + '</div>'
+        : '<div class="muted" style="font-size:11px;margin-bottom:10px">nothing to recommend right now — the machine is calm</div>') +
+      '<div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin:2px 0 6px">action ledger · newest first</div>' +
+      '<div class="scrollwin" style="max-height:190px">' + (rows.length
+        ? rows.map((r) => '<div style="padding:4px 0;border-bottom:1px solid var(--line)">'
+            + '<div class="row" style="gap:8px"><span class="mono" style="font-size:10.5px;color:var(--faint);min-width:96px">' + escapeHtml(String(r.at || '').replace('T', ' ').slice(11, 19)) + '</span><span class="chip" style="font-size:10px">' + escapeHtml(r.agent || '?') + '</span><span class="mono" style="font-size:10.5px">' + escapeHtml(r.action || '') + '</span><span class="muted" style="font-size:10.5px;flex:1">' + escapeHtml(r.reason || '') + '</span><span style="color:' + color(r.ok) + ';font-size:10px">' + (r.ok === false ? 'failed ✕' : 'done ✓') + '</span></div>'
+            // when a repair could not bring an app back, the app's OWN last
+            // error line rides the receipt — the owner should not have to go
+            // digging for the reason the agent already read
+            + (r.detail ? '<div class="mono" style="font-size:10px;color:var(--dim);padding:2px 0 0 104px;overflow-wrap:anywhere">↳ ' + escapeHtml(String(r.detail).slice(0, 200)) + '</div>' : '')
+            + '</div>').join('')
+        : '<div class="muted" style="font-size:11px">no actions yet — the agents act only when something is actually wrong</div>') + '</div>';
+  } catch (err) {
+    body.innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
+  }
+}
+$('#btn-intel-refresh') && $('#btn-intel-refresh').addEventListener('click', loadIntelView);
+let reportFullArmed = false;
+$('#btn-intel-report') && $('#btn-intel-report').addEventListener('click', async () => {
+  const b = $('#btn-intel-report');
+  b.disabled = true; b.textContent = 'assembling…';
+  try {
+    const d = await api.call('GET', '/api/digest?days=7' + (reportFullArmed ? '&full=1' : ''));
+    const md = d.markdown || '';
+    let copied = false;
+    try { await navigator.clipboard.writeText(md); copied = true; } catch { /* clipboard refused — fall through to the window */ }
+    // show it either way: a copied report the owner cannot see is a magic trick
+    const w = window.open('', '_blank');
+    if (w) { w.document.write('<pre style="font:12px ui-monospace,monospace;padding:18px;white-space:pre-wrap">' + escapeHtml(md) + '</pre>'); w.document.title = 'gitlive report — 7 days'; }
+    toast(copied
+      ? (reportFullArmed ? 'FULL report copied + opened — for your own eyes, not for posting' : 'weekly report copied + opened (identifiers masked — safe to post)')
+      : 'weekly report opened (clipboard was refused)');
+    reportFullArmed = !reportFullArmed;
+    setTimeout(() => { reportFullArmed = false; }, 5000);
+  } catch (err) { toast('report failed: ' + err.message); }
+  finally { b.disabled = false; b.textContent = reportFullArmed ? '⧉ full report (unmasked)' : '⧉ weekly report'; }
+});
+$('#btn-agents-refresh') && $('#btn-agents-refresh').addEventListener('click', loadAgentsView);
+$('#btn-agents-run') && $('#btn-agents-run').addEventListener('click', async () => {
+  const b = $('#btn-agents-run');
+  b.disabled = true; b.textContent = 'running…';
+  try {
+    const r = await api.call('POST', '/api/agents/run', { agent: 'all' });
+    const n = (r.result && r.result.lastActions ? r.result.lastActions.length : 0);
+    toast(n ? 'agent pass ran — ' + n + ' action' + (n === 1 ? '' : 's') : 'agent pass ran — nothing needed doing');
+    loadAgentsView();
+  } catch (err) { toast('agent pass failed: ' + err.message); }
+  finally { b.disabled = false; b.textContent = '▶ run a pass now'; }
+});
+
+// ── node checkup: one row per machine fact, one honest fix per row ────────
+$('#btn-checkup') && $('#btn-checkup').addEventListener('click', loadCheckup);
+// the support bundle is the artifact you hand to somebody else, so the copy
+// is MASKED by default (paths → ~, addresses → <address>, names → app-N). A
+// second click within a few seconds copies the full one for your own eyes.
+let supportFullArmed = false;
+$('#btn-support') && $('#btn-support').addEventListener('click', async () => {
+  const b = $('#btn-support');
+  b.disabled = true; b.textContent = 'assembling…';
+  const wantFull = supportFullArmed;
+  try {
+    const d = await api.call('GET', '/api/support' + (wantFull ? '?full=1' : ''));
+    const text = JSON.stringify(d, null, 1);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(wantFull
+        ? 'FULL bundle copied — it carries your paths, addresses and app names. Do not post it publicly.'
+        : 'support bundle copied — identifiers masked, safe to post. Click again within 5s for the full copy.');
+    } catch { toast('clipboard blocked — ' + text.length + ' chars assembled'); }
+    supportFullArmed = !wantFull;              // arm the full copy for the next click
+    setTimeout(() => { supportFullArmed = false; }, 5000);
+    b.textContent = supportFullArmed ? '⧉ full copy (unmasked)' : '⧉ support bundle';
+  } catch (err) { toast('bundle failed: ' + err.message); }
+  finally { b.disabled = false; if (!supportFullArmed) b.textContent = '⧉ support bundle'; }
+});
+async function loadCheckup() {
+  const body = $('#checkup-body');
+  if (!body) return;
+  try {
+    const d = await api.call('GET', '/api/doctor');
+    const color = { ok: 'var(--mint)', warn: 'var(--warn)', fail: 'var(--bad)' };
+    const rows = d.rows || [];
+    body.innerHTML = rows.length
+      ? rows.map((r) => `
+        <div class="kvrow" style="align-items:flex-start;gap:10px;padding:9px 2px">
+          <span class="pdot" style="background:${color[r.status] || 'var(--faint)'};box-shadow:0 0 8px ${color[r.status] || 'var(--faint)'}66;margin-top:4px"></span>
+          <span style="flex:1;min-width:0">
+            <div style="font-size:13px;color:var(--txt)">${escapeHtml(r.title)}</div>
+            <div class="muted" style="font-size:11px;line-height:1.5">${escapeHtml(r.detail)}</div>
+          </span>
+          ${r.fix ? fixButton(r.fix) : '<span class="chip on" style="align-self:center;white-space:nowrap">fine</span>'}
+        </div>`).join('')
+      : '<span class="muted">no checks reported</span>';
+    wireFixButtons(body);
+  } catch (err) {
+    body.innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
+  }
+}
+function fixButton(fix) {
+  if (fix.kind === 'command') return `<button class="btn small zcopy" data-copy="${escapeHtml(fix.command)}" title="copy the command">⧉ ${escapeHtml(fix.label)}</button>`;
+  if (fix.kind === 'action') return `<button class="btn small primary" data-fixaction="${escapeHtml(fix.action)}">${escapeHtml(fix.label)}</button>`;
+  if (fix.kind === 'link') return `<button class="btn small" data-fixlink="${escapeHtml(fix.target)}">${escapeHtml(fix.label)} →</button>`;
+  return '';
+}
+// ── in-app knowledge: every section explains itself, every command copies ─
+const GUIDES = {
+  apps: {
+    t: 'apps', anchor: 'apps-hero',
+    lead: 'An app lives here once gitlive accepts a signed push. This area is ONLY apps — the machine\'s own machinery lives in gitlive.',
+    steps: [
+      { when: 'new app', do: 'two ways in, same result: press ＋ new project and pick a folder (the form runs the same gitlive init the terminal runs and shows you its output), or run gitlive init inside the project yourself. Either way the first push — git add -A && git commit -m "first push" && git push — deploys it, receipts it, and (with a zone + token) publishes its name.' },
+      { when: 'awaiting first push', do: 'a project that is registered but has never been pushed shows "not deployed yet", not "offline" — nothing is wrong, the code simply has not arrived.' },
+      { when: 'down app', do: 'open its card — the one action it offers is the next honest step: deploy, restart, or stop. Logs sit on the same card.' },
+      { when: 'public', do: 'make public on the card → then run the admission exam (⚕) — passing means the app is alive, public, leak-free, receipted and backed up. Resting apps sit in the pool below.' },
+      { when: 'name', do: 'click a zone chip on the card to claim <app>.<zone>, or use the form — DNS writes are receipted in events.' },
+      { when: 'something wrong', do: 'open the card → 🔍 diagnose — the chain walks process → port → health → names → public and puts one fix on every broken hop. It runs itself the moment a down app opens.' },
+      { when: 'data safety', do: 'the card\'s detail has backups: back up / drill restore — a backup that cannot be restored is a wish.' },
+    ],
+    commands: [],
+    note: 'Deploys normally arrive by git push, not buttons — the button path exists for re-deploys of what is already registered.',
+  },
+  intel: {
+    t: 'intelligence', anchor: 'intel-view',
+    lead: 'Everything here is measured from this machine\'s own ledgers — the 1-minute health history, the deploy and backup receipts, the agent ledger and the audit log. No model, no cloud, no invented numbers: each claim prints its sample count and its evidence, and a detector stays silent until it has enough data to mean something.',
+    steps: [
+      { when: 'health score', do: 'a 0-100 number that is never shown alone: every factor, its weight and its raw value sit under it. A factor with no data is EXCLUDED and its weight redistributed — that is why a 64 here can still mean "nothing is on fire".' },
+      { when: 'up right now', do: 'a down app is a fact, not an average, so it is scored on its own and can never be hidden by a good week.' },
+      { when: 'insights', do: 'flapping, failures clustered in a time-of-day window, a resource growing with a time-to-limit forecast, a failing deploy streak, a stale backup, an expiring certificate, an outage that started minutes after a deploy (with the commit), and an app that a restart could not fix (with the app\'s own error line).' },
+      { when: 'timeline', do: 'the merged story from every ledger the machine already keeps — deploys, backups, agent actions, jobs, audit events. This window shows the machine\'s own machinery; each project\'s own timeline lives on its card in projects (apps-area law: a project\'s name belongs in projects).' },
+      { when: 'report', do: '⧉ weekly report copies the digest as markdown: availability per project, every incident with its duration, deploys, backup state, what the helpers did, and the file each number came from. The same text is one command away: gitlive report.' },
+      { when: 'policies', do: 'the helper agents obey what you allow, per project: off (hands off) · watch (diagnose and recommend only) · repair (restart, verified). A maintenance window suspends repairs; after a repair that could not be verified the wait doubles (5m → 15m → 1h → 6h) and the schedule is printed on the receipt.' },
+    ],
+    commands: ['gitlive intel', 'gitlive report --days 7', 'gitlive timeline --days 3', 'gitlive policy set <app> --mode watch'],
+    note: 'Honesty rules you can check: a window with too few samples says "not enough samples", never 0% or 100%; an outage that is still open is reported as ongoing and counted up to now; a gap in the meter (machine asleep, plane restarted) is a gap, never uptime.',
+  },
+  agents: {
+    t: 'agents', anchor: 'agents-view',
+    lead: 'Three deterministic helpers run on a cadence inside the plane: repair (restart an app that went down), diagnose (record why the moment it happens), improve (recommend, never change). Every action is receipted and bounded — and no agent ever deletes, rolls back, or touches keys.',
+    steps: [
+      { when: 'repair', do: 'an app that is down and has a run dir gets the SAME restart the button does — at most a few per pass, with a per-app cooldown so a crash loop is not hammered. The repair is VERIFIED: the agent waits for the app to actually answer before it calls it done, and if the app stays down the receipt says "failed" and carries the app\'s own last error line.' },
+      { when: 'diagnose', do: 'when an app flips to down, the full hop chain runs and its result is stored next to the app — the reason is on record even if nobody was watching.' },
+      { when: 'improve', do: 'reads restarts per hour, deploy failure streaks, backup age and disk headroom — and writes RECOMMENDATIONS only. Judgement stays with you.' },
+      { when: 'off', do: 'set GITLIVE_AGENTS=0 in the environment the plane starts with, or stop them from this card — they are helpers, not a requirement.' },
+    ],
+    commands: [],
+    note: 'They are not language models: no network, no keys, no invented actions — facts in, actions out, receipts kept.',
+  },
+  checkup: {
+    t: 'node checkup', anchor: 'checkup-card',
+    lead: 'The machine checks ITSELF and gives you one fix per row. Green rows are fine; amber means attention; red means something drifted.',
+    steps: [
+      { when: 'anything yellow', do: 'press the button next to the row — it either fixes it (supervisor, names) or copies the exact terminal command.' },
+      { when: 'update row', do: 'when npm has a NEWER version, the row offers: update gitlive → — the flow shows the changes, backs up first, and refuses without a snapshot. It never offers a downgrade.' },
+      { when: 're-check', do: 'press ↻ re-check after any fix — the rows refresh from the live machine.' },
+    ],
+    commands: [],
+    note: 'The checkup only reads and suggests — destructive things (shredding, rotations) never appear here as buttons.',
+  },
+  mesh: {
+    t: 'mesh', anchor: 'mesh-view',
+    lead: 'One machine is a home; two are a mesh. A second node you control replicates state and takes over when this one sleeps. Every member stays yours — gitlive never hosts the mesh.',
+    steps: [
+      { when: 'add a second machine', do: 'mint an invite above (name + hours) — the full join command prints with the token; run it ON THAT MACHINE.' },
+      { when: 'join', do: 'the new node receives a share of the storage key (n-of-m split) and a copy of registry state; it announces itself here.' },
+      { when: 'member missing', do: 're-mint an invite — tokens are single-use and expire.' },
+    ],
+    commands: ['gitlive mesh join <token> <owner-peer-url>'],
+    note: 'The token is a bearer secret: hand it over a channel you trust.',
+  },
+  peers: {
+    t: 'peers', anchor: 'peers-view',
+    lead: 'The peer book is the federation layer for when you grow past one home. Peers are machines that announced themselves to this node — signed hellos only.',
+    steps: [
+      { when: 'announce this machine', do: 'fill the two fields below — who should see you + how they reach you back — and press 📣 announce (or: gitlive peer announce <url> --endpoint <my-url>).' },
+      { when: 'trust a peer', do: 'trust stays owner-driven — strangers can announce, but only owners you trust get anywhere.' },
+    ],
+    commands: ['gitlive peer announce <url> --endpoint <my-url>'],
+  },
+  nodes: {
+    t: 'nodes', anchor: 'nodes-view',
+    lead: 'Machines that registered against this control plane — identity + heartbeat first; remote actions are the next seam.',
+    steps: [
+      { when: 'add a machine', do: 'on that machine run the agent command with this plane\'s URL — it appears here once identity checks pass.' },
+      { when: 'a node is offline', do: 'the heartbeat simply stopped — check the machine, not this dashboard.' },
+    ],
+    commands: ['gitlive agent connect <control-url> --name <name>'],
+  },
+  entry: {
+    t: 'entry', anchor: 'entry-view',
+    lead: 'An entry is a machine YOU control with a public address — it relays public traffic to apps on machines behind NAT. This machine can be the entry, the home behind NAT, or both.',
+    steps: [
+      { when: 'this machine is public', do: 'press ▶ serve below (or: gitlive entry serve) — it accepts relays and can hold https certificates.' },
+      { when: 'this machine is behind NAT', do: 'fill the url + token below and press ▶ connect (or: gitlive entry connect <url> --token <t>) — the entry relays its apps.' },
+      { when: 'https on the entry', do: 'fill the domain + cert + key file paths below and press 🔒 install cert (or: gitlive entry cert <domain> --cert --key).' },
+      { when: 'own domain', do: 'a borrowed <app>.<zone> label becomes your own from the app\'s detail: graduate → (or: gitlive domain graduate <app>).' },
+    ],
+    commands: ['gitlive entry serve', 'gitlive entry connect <url> --token <t>', 'gitlive entry cert <domain> --cert --key', 'gitlive domain graduate <app>'],
+  },
+  keys: {
+    t: 'keys', anchor: 'keys-view',
+    lead: 'The trust anchors of this node. Owner key = membership trust; storage key = at-rest encryption; node key = this machine\'s identity.',
+    steps: [
+      { when: 'duress', do: 'a "!" prefixed passphrase shreds the storage key if entered under coercion — armed in the terminal: gitlive crypt keygen, passphrase prefix "!".' },
+      { when: 'dead-man', do: 'gitlive crypt deadman arm --hours N — if no check arrives before the deadline, the storage key is shredded.' },
+      { when: 'mesh shares', do: 'when a member joins, the storage key is split n-of-m across member homes — refreshed on every join.' },
+    ],
+    commands: ['gitlive crypt keygen', 'gitlive crypt deadman arm --hours N'],
+    note: 'Shredding is real, permanent, and terminal-only BY DESIGN — the dashboard never triggers it.',
+  },
+  events: {
+    t: 'events', anchor: 'events-view',
+    lead: 'The audit log exists for the moments that matter: deploys, duress, dead-man, key rotations, refused pushes. A quiet log is a quiet machine.',
+    steps: [
+      { when: 'read a row', do: 'click any event to inspect it — security events jump to their context.' },
+      { when: 'app rows', do: 'app names never print here (the two-area law) — the action is summarized, and the jump button opens the app in apps.' },
+    ],
+    commands: [],
+  },
+  settings: {
+    t: 'settings', anchor: 'settings-view',
+    lead: 'The control room: node identity, naming & domains, protection, operations, and the danger zone (read-only by design).',
+    steps: [
+      { when: 'make apps public by name', do: 'add a zone (e.g. yourname.app) + its deSEC token → the 🪄 wizard walks the three deSEC steps → every first push claims <app>.<zone> with a real AAAA to your public IPv6.' },
+      { when: 'https for the zone', do: 'press 🔒 wildcard cert on the zone — ACME DNS-01 through the stored token, works behind NAT.' },
+      { when: 'local https', do: 're-issue local cert → run the one trust step shown below it (admin, once) → <app>.gitlive serves https.' },
+      { when: 'crash safety', do: 'operations → ensure supervisor — it revives what crashed and leaves what you stopped.' },
+      { when: 'data safety', do: 'operations → back up everything now (restic, encrypted) — per-app drills live on each card in apps; the reboot agent makes the plane come back on its own.' },
+    ],
+    commands: [],
+    note: 'The danger zone lists duress/dead-man states but never triggers them — those stay terminal commands, on purpose.',
+  },
+};
+function openGuide(key) {
+  const g = GUIDES[key];
+  if (!g) return;
+  let host = document.getElementById('guide-strip');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'guide-strip';
+    host.className = 'card guidestrip';
+  }
+  if (host.dataset.key === key && !host.classList.contains('hidden')) { host.classList.add('hidden'); return; }
+  host.dataset.key = key;
+  host.classList.remove('hidden');
+  host.innerHTML =
+    '<div class="row" style="margin-bottom:8px"><div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase">' + escapeHtml(g.t) + ' · how it works & what to run</div><span class="spacer"></span><button class="mini-btn" data-guide-close>✕ close</button></div>' +
+    '<div class="muted" style="font-size:12px;margin-bottom:10px;line-height:1.5">' + escapeHtml(g.lead) + '</div>' +
+    (g.steps || []).map((s) => '<div class="kvrow" style="align-items:flex-start;gap:10px;padding:6px 2px"><span class="chip" style="white-space:nowrap;font-size:10px">' + escapeHtml(s.when) + '</span><span class="muted" style="font-size:11.5px;flex:1;line-height:1.5">' + escapeHtml(s.do) + '</span></div>').join('') +
+    (g.commands || []).map((c) => '<div class="row" style="gap:8px;margin-top:6px"><code class="mono" style="flex:1;font-size:11px;padding:6px 8px;background:rgba(10,14,26,.6);border:1px solid var(--line);border-radius:6px;overflow-wrap:anywhere">' + escapeHtml(c) + '</code><button class="btn small zcopy" data-copy="' + escapeHtml(c) + '">⧉ copy</button></div>').join('') +
+    (g.note ? '<div class="muted" style="font-size:10.5px;margin-top:10px;color:var(--warn)">⚠ ' + escapeHtml(g.note) + '</div>' : '');
+  const anchor = document.getElementById(g.anchor);
+  if (anchor) {
+    const card = anchor.closest('.card');
+    if (card) {
+      const head = card.querySelector('.row');
+      if (head) head.parentNode.insertBefore(host, head.nextSibling);
+      else card.insertBefore(host, card.firstChild);
+    } else {
+      anchor.parentNode.insertBefore(host, anchor.nextSibling);
+    }
+  }
+  wireFixButtons(host);
+  host.querySelector('[data-guide-close]').addEventListener('click', () => host.classList.add('hidden'));
+}
+
+function wireFixButtons(scope) {
+  for (const b of scope.querySelectorAll('.zcopy')) {
+    b.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy); toast('command copied — paste it in a terminal'); }
+      catch { toast('copy blocked by the browser — select the button title instead'); }
+    });
+  }
+  for (const b of scope.querySelectorAll('[data-fixaction]')) {
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { await settingsAction(b.dataset.fixaction); } catch (e) { toast(e.message); }
+      loadCheckup();
+    });
+  }
+  for (const b of scope.querySelectorAll('[data-fixlink]')) {
+    b.addEventListener('click', () => {
+      const t = b.dataset.fixlink;
+      if (t === 'apps') { setView('apps'); return; }
+      if (t === 'machine:settings') {
+        setView('machine');
+        const el = document.getElementById('settings-view');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  }
 }
 
 async function loadMeshView() {
@@ -2228,18 +3698,55 @@ async function loadPoolView() {
   }
 }
 
+function wireKeyActions() {
+  for (const b of document.querySelectorAll('#keys-body [data-key-act]')) {
+    b.addEventListener('click', async () => {
+      const act = b.dataset.keyAct;
+      const out = $('#key-out');
+      if (act === 'rotate' && !b.dataset.confirm) {
+        b.dataset.confirm = '1'; b.textContent = 'sure? rotate';
+        setTimeout(() => { if (b.isConnected) { delete b.dataset.confirm; b.textContent = 'rotate keys'; } }, 3500);
+        return;
+      }
+      b.disabled = true;
+      try {
+        const r = await api.call('POST', '/api/keys/action', { action: act });
+        if (out) out.textContent = (r.output || act + ' ok').split('\n').slice(-2).join(' · ');
+        toast('keys: ' + act + ' done');
+        loadKeysView();
+      } catch (err) { toast('keys ' + act + ' failed: ' + err.message); b.disabled = false; }
+    });
+  }
+}
+
 async function loadPeersView() {
   try {
     const d = await api.call('GET', '/api/peers');
     const peers = d.peers || [];
-    $('#peers-body').innerHTML = peers.length
+    const announce = '<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">' +
+      '<div class="muted" style="font-size:11px;margin-bottom:8px">announce this machine to a peer — signed hello, from here:</div>' +
+      '<div class="row" style="gap:8px;flex-wrap:wrap"><input class="inp" data-peer-url placeholder="peer url (who should see you)" style="flex:1;min-width:180px" spellcheck="false"><input class="inp" data-peer-myurl placeholder="my url (how they reach you back)" style="flex:1;min-width:180px" spellcheck="false"><button class="btn small primary" data-peer-announce>📣 announce</button></div>' +
+      '<div id="peer-out" class="muted" style="font-size:11px;margin-top:6px"></div></div>';
+    $('#peers-body').innerHTML = (peers.length
       ? peers.map((p) => '<div class="kvrow"><span class="mono" style="min-width:150px">' + escapeHtml(p.name) + '</span><span class="mono muted" style="font-size:11px">' + escapeHtml((p.endpoints || []).join(' ')) + '</span><span class="chip">owner ' + escapeHtml(String(p.ownerFingerprint || '').slice(0, 12)) + '…</span></div>').join('')
-      : viewEmpty(
-          '<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 8h9M8 4.6 11.4 8 8 11.4"/><path d="M14.2 8H5.2M8 4.6 4.6 8 8 11.4"/></svg>',
-          'The peer book is empty',
-          'Peers are machines that announced themselves to this node — the federation layer for when you grow past one home. Signed hellos only; strangers can announce, but only owners you trust get anywhere.',
-          ['gitlive peer announce &lt;url&gt; --endpoint &lt;my-url&gt;'],
-        );
+      : '<div class="muted" style="font-size:12px;margin:4px 0">The peer book is empty — peers are machines that announced themselves to this node, the federation layer for when you grow past one home. Signed hellos only; strangers can announce, but only owners you trust get anywhere.</div>') + announce;
+    const ab = document.querySelector('#peers-body [data-peer-announce]');
+    if (ab) ab.addEventListener('click', async () => {
+      const out = $('#peer-out');
+      const url = (document.querySelector('#peers-body [data-peer-url]') || {}).value;
+      const myUrl = (document.querySelector('#peers-body [data-peer-myurl]') || {}).value;
+      if (!url) { toast('type the peer url first'); return; }
+      ab.disabled = true; out.textContent = 'announcing…';
+      try {
+        await api.call('POST', '/api/peers/announce', { url, myUrl });
+        out.textContent = 'announced to ' + url + ' — you are in their peer book now';
+        toast('peer announce sent');
+        loadPeersView();
+      } catch (err) {
+        out.textContent = '';
+        toast('announce failed: ' + err.message);
+      } finally { ab.disabled = false; }
+    });
   } catch (err) {
     $('#peers-body').innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
   }
@@ -2286,7 +3793,16 @@ async function loadKeysView() {
     ].join(' ');
     $('#keys-body').innerHTML = row('owner manifest key', k.ownerKey) + row('node key', k.nodeKey) + row('storage key', k.storageKey) +
       '<div class="chips" style="margin-top:10px">' + statusLine + '</div>' +
-      '<div class="muted" style="font-size:11px;margin-top:10px">owner key = membership trust · storage key = at-rest encryption (gitlive crypt) · duress prefix "!" · crypt deadman arm --hours N</div>';
+      '<div class="chips" style="margin-top:12px">' +
+        '<button class="btn small" data-key-act="keygen">generate missing keys</button>' +
+        '<button class="btn small" data-key-act="rotate">rotate keys</button>' +
+        '<button class="btn small" data-key-act="deadman-arm">arm dead-man (72h)</button>' +
+        '<button class="btn small" data-key-act="deadman-disarm">disarm dead-man</button>' +
+      '</div>' +
+      '<div id="key-out" class="muted" style="font-size:11px;margin-top:8px"></div>' +
+      '<div class="muted" style="font-size:11px;margin-top:10px">owner key = membership trust · storage key = at-rest encryption (gitlive crypt) · duress prefix "!" · crypt deadman arm --hours N</div>' +
+      '<div class="muted" style="font-size:10.5px;margin-top:4px">duress wrapping stays terminal-only on purpose: it takes a passphrase, and a passphrase typed into a browser is one more place a secret can leak</div>';
+    wireKeyActions();
   } catch (err) {
     $('#keys-body').innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
   }
@@ -2331,16 +3847,10 @@ async function loadEntryView() {
     const chip = (on, txt) => '<span class="chip ' + (on ? 'on' : '') + '">' + txt + '</span>';
     const cli = e.client, srv = e.server;
     const doms = (cli.domains || []);
-    if (!cli.configured && !srv.configured) {
-      $('#entry-body').innerHTML = viewEmpty(
-        '<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="1.5" width="10" height="13" rx="2.4"/><path d="M8 10.4V5.2M5.6 7.6 8 5.2l2.4 2.4"/></svg>',
-        'No entry node in the loop yet',
-        'An entry is a machine YOU control with a public address — it relays public traffic to apps on machines behind NAT. This machine can be the entry, the home behind NAT, or both.',
-        ['gitlive entry serve', 'gitlive entry connect &lt;url&gt; --token &lt;t&gt;'],
-      );
-      return;
-    }
     const rows = [];
+    if (!cli.configured && !srv.configured) {
+      rows.push('<div class="muted" style="font-size:12px;margin:4px 0 10px">No entry node in the loop yet — an entry is a machine YOU control with a public address. It relays public traffic to apps on machines behind NAT. This machine can be the entry, the home behind NAT, or both — start either below.</div>');
+    }
     rows.push('<div class="kvrow"><span class="lbl">this machine dials an entry (behind NAT)</span>' + (cli.configured
       ? (cli.running
         ? chip(true, 'connected · ' + doms.length + ' domain' + (doms.length === 1 ? '' : 's') + ' routed') + '<span class="mono muted" style="font-size:11px;margin-left:8px">' + escapeHtml(cli.url || '') + '</span>'
@@ -2355,8 +3865,52 @@ async function loadEntryView() {
     if (srv.machines && srv.machines.length) {
       rows.push('<div class="muted" style="font-size:11px;margin:2px 0 8px">machines relaying here: ' + srv.machines.map((m) => escapeHtml(m.name || '?') + ' <span class="mono">(' + m.domains.length + ' domain' + (m.domains.length === 1 ? '' : 's') + (m.lastSeen ? ' · ' + escapeHtml(timeAgo(m.lastSeen)) : '') + ')</span>').join(' · ') + '</div>');
     }
-    rows.push('<div class="muted" style="font-size:11px;margin-top:12px">public machine: <span class="mono">gitlive entry serve</span> · NAT machine: <span class="mono">gitlive entry connect &lt;url&gt; --token &lt;t&gt;</span> · https on the entry: <span class="mono">gitlive entry cert &lt;domain&gt; --cert --key</span> · borrowed zone label → own domain: <span class="mono">gitlive domain graduate</span></div>');
+    // the cockpit: run the entry from here — same CLI, no terminal needed
+    const acts = [];
+    if (!srv.configured) {
+      acts.push('<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:4px"><span class="chip">make THIS machine the entry</span><input class="inp" data-entry-port placeholder="port (default 4900)" style="width:150px" spellcheck="false"><button class="btn small primary" data-entry-act="serve">▶ serve</button></div>');
+    } else {
+      acts.push('<div class="row" style="gap:8px;margin-top:4px"><span class="chip">entry server here</span>' + (srv.running
+        ? '<button class="btn small" data-entry-act="stop">■ stop entry server</button>'
+        : '<button class="btn small primary" data-entry-act="serve">▶ start entry server</button>') + '</div>');
+    }
+    if (!cli.configured || !cli.running) {
+      acts.push('<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><span class="chip">dial an entry (behind NAT)</span><input class="inp" data-entry-url placeholder="entry url" style="width:190px" spellcheck="false" value="' + escapeHtml(cli.url || '') + '"><input class="inp" data-entry-token placeholder="token from the entry" style="width:170px" spellcheck="false"><button class="btn small primary" data-entry-act="connect">▶ connect</button></div>');
+    } else if (cli.running) {
+      acts.push('<div class="row" style="gap:8px;margin-top:8px"><span class="chip">connected to ' + escapeHtml(cli.url || 'entry') + '</span><button class="btn small" data-entry-act="disconnect">✕ disconnect</button></div>');
+    }
+    acts.push('<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px"><span class="chip">https for a name here</span><input class="inp" data-entry-cert-domain placeholder="domain" style="width:160px" spellcheck="false"><input class="inp" data-entry-cert-file placeholder="cert file path" style="width:170px" spellcheck="false"><input class="inp" data-entry-key-file placeholder="key file path" style="width:170px" spellcheck="false"><button class="btn small" data-entry-act="cert">🔒 install cert</button></div>');
+    acts.push('<div id="entry-out" class="muted" style="font-size:11px;margin-top:8px"></div>');
+    rows.push('<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">' + acts.join('') + '</div>');
     $('#entry-body').innerHTML = rows.join('');
+    for (const b of document.querySelectorAll('#entry-body [data-entry-act]')) {
+      b.addEventListener('click', async () => {
+        const out = $('#entry-out');
+        const act = b.dataset.entryAct;
+        const port = (document.querySelector('#entry-body [data-entry-port]') || {}).value;
+        const url = (document.querySelector('#entry-body [data-entry-url]') || {}).value;
+        const token = (document.querySelector('#entry-body [data-entry-token]') || {}).value;
+        const domain = (document.querySelector('#entry-body [data-entry-cert-domain]') || {}).value;
+        const cert = (document.querySelector('#entry-body [data-entry-cert-file]') || {}).value;
+        const key = (document.querySelector('#entry-body [data-entry-key-file]') || {}).value;
+        b.disabled = true; out.textContent = 'running…';
+        try {
+          if (act === 'cert') {
+            const r = await api.call('POST', '/api/entry/cert', { domain, cert, key });
+            out.textContent = 'certificate installed for ' + r.domain + ' — ' + r.crt;
+            toast('entry cert installed');
+          } else {
+            const r = await api.call('POST', '/api/entry/action', { action: act, port, url, token });
+            out.textContent = act === 'serve' ? 'entry server running' : act === 'connect' ? 'dialing ' + (url || 'the entry') : act === 'disconnect' ? 'disconnected from the entry' : 'entry server stopped';
+            toast('entry: ' + act + ' ok');
+          }
+          loadEntryView();
+        } catch (err) {
+          out.textContent = '';
+          toast('entry ' + act + ' failed: ' + err.message);
+        } finally { b.disabled = false; }
+      });
+    }
   } catch (err) {
     $('#entry-body').innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
   }
@@ -2389,13 +3943,17 @@ async function loadSettingsView() {
   const body = $('#settings-body');
   body.innerHTML = 'loading…';
   try {
-    const [meta, settings, domains, daemon, keys, me] = await Promise.all([
+    const [meta, settings, domains, daemon, keys, me, backups, boot, jobs, certs] = await Promise.all([
       api.call('GET', '/api/meta'),
       api.call('GET', '/api/settings'),
       api.call('GET', '/api/domains'),
       api.call('GET', '/api/daemon'),
       api.call('GET', '/api/keys'),
       api.call('GET', '/api/me'),
+      api.call('GET', '/api/backups').catch(() => ({ apps: [] })),
+      api.call('GET', '/api/boot').catch(() => ({ installed: null })),
+      api.call('GET', '/api/jobs').catch(() => ({ jobs: [] })),
+      api.call('GET', '/api/certs').catch(() => ({ certs: [] })),
     ]);
     const chip = (on, txt) => `<span class="chip ${on ? 'on' : ''}">${escapeHtml(txt)}</span>`;
     const node = meta.node || {};
@@ -2435,14 +3993,31 @@ async function loadSettingsView() {
           <button class="btn small" data-set="local-tls">re-issue local cert</button>
         </div>
         <div class="kvrow" style="margin-top:12px"><span class="lbl">zones</span>${domains.zones.length ? chip(true, domains.zones.length + ' zone' + (domains.zones.length === 1 ? '' : 's')) : chip(false, 'none')}</div>
-        <div style="margin:6px 0 8px">${domains.zones.map((z) => `<div class="mono" style="font-size:11px;padding:3px 0">· ${escapeHtml(z.domain)} <span class="tag" style="font-size:9px">.${escapeHtml(z.domain.split('.').pop())}</span>${z.hasToken ? ' <span style="color:var(--mint)">dns api ✓</span>' : ''} <button class="mini-btn" data-zone-rm="${escapeHtml(z.domain)}">remove</button></div>`).join('') || '<div class="muted" style="font-size:11px">no zones yet — register one below and every app gets <app>.<your-zone>.</div>'}</div>
+        <div style="margin:6px 0 8px">${domains.zones.map((z) => `<div class="row" style="gap:8px;padding:3px 0;flex-wrap:wrap"><span class="mono" style="font-size:11px">· ${escapeHtml(z.domain)} <span class="tag" style="font-size:9px">.${escapeHtml(z.domain.split('.').pop())}</span>${z.hasToken ? ' <span style="color:var(--mint)">dns api ✓</span>' : ' <span style="color:var(--warn)">no token</span>'}</span><span class="spacer"></span>${z.hasToken ? `<button class="mini-btn" data-zone-cert="${escapeHtml(z.domain)}">🔒 wildcard cert</button>` : ''}<button class="mini-btn" data-zone-rm="${escapeHtml(z.domain)}">remove</button></div>`).join('') || '<div class="muted" style="font-size:11px">no zones yet — register one below and every app gets <app>.<your-zone>.</div>'}</div>
+        <div class="kvrow"><span class="lbl">public IPv6</span>${domains.ipv6 ? `<span class="mono" style="font-size:11px;color:var(--cy)">${escapeHtml(domains.ipv6)}</span><button class="mini-btn zcopy" data-copy="${escapeHtml(domains.ipv6)}">⧉</button>` : '<span class="chip off">none right now</span>'}<span class="muted" style="font-size:10.5px">the AAAA target — step 3 in the wizard</span></div>
+        <div class="kvrow" style="margin-top:8px"><span class="lbl">certificates</span>${(certs.certs || []).length ? chip(true, (certs.certs || []).length + ' held') : chip(false, 'none yet')}</div>
+        <div style="margin:6px 0 8px">${(certs.certs || []).map((c) => `<div class="row" style="gap:8px;padding:2px 0;flex-wrap:wrap"><span class="mono" style="font-size:11px;min-width:120px">${escapeHtml(c.domain)}</span>${c.status === 'ok' ? `<span class="chip on" style="font-size:10px">${c.daysLeft}d left</span>` : c.status === 'missing' ? '<span class="chip off" style="font-size:10px">missing</span>' : `<span class="chip off" style="font-size:10px">${c.status === 'expired' ? 'EXPIRED' : 'expiring'} · ${c.daysLeft === null ? '?' : c.daysLeft + 'd'}</span>`}<span class="muted" style="font-size:10px">${escapeHtml(c.kind)}</span></div>`).join('') || '<div class="muted" style="font-size:11px">no certificates yet — the local gateway cert issues on demand; a zone\'s 🔒 wildcard cert lands here once the zone has its token</div>'}</div>
+        <div style="margin:8px 0 4px">
+          <button class="mini-btn" data-desec-wizard>🪄 deSEC setup — 3 steps, once</button>
+          <button class="mini-btn" data-dns-history>receipts — dns writes</button>
+        </div>
+        <div id="desec-wizard" class="hidden" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:6px 0 10px">
+          <div style="font-size:9.5px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin-bottom:8px">deSEC — the free open-source DNS provider gitlive rides today</div>
+          <div class="muted" style="font-size:11.5px;line-height:1.6">
+            <b style="color:var(--txt)">1 · account + domain</b> — open desec.io → register (free) → create a domain, e.g. <span class="mono">yourname.dedyn.io</span>.<br>
+            <b style="color:var(--txt)">2 · token</b> — in deSEC: Token management → create token → tick <b>full rrsets write</b> → paste the domain into “zone domain” and the token into “dns api token” below → <b>add zone</b>.<br>
+            <b style="color:var(--txt)">3 · one AAAA record</b> — in deSEC’s DNS panel add: name <span class="mono">*</span>, type <span class="mono">AAAA</span>, value <span class="mono" style="color:var(--cy)">${domains.ipv6 ? escapeHtml(domains.ipv6) : '<your public IPv6>'}</span>. From then on every first push claims <span class="mono">&lt;app&gt;.yourname.dedyn.io</span> with no further steps.<br>
+            <span style="color:var(--faint)">the wildcard cert button on your zone requests the https certificate through the same token — works behind NAT.</span>
+          </div>
+        </div>
+        <div id="dns-history" class="hidden" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:6px 0 10px"></div>
         <div class="rowline" style="margin-top:8px">
           <input id="zone-domain" placeholder="zone domain (e.g. yourname.app)" style="flex:1;min-width:150px">
           <input id="zone-token" placeholder="dns api token (deSEC — optional, for ACME)" style="flex:1;min-width:150px">
           <button class="btn small primary" data-set="zone-add">add zone</button>
         </div>
         <div id="zone-out" class="muted" style="font-size:11px;margin-top:6px"></div>
-        <div class="muted" style="font-size:11px;margin-top:10px">app names live on their own cards in <b style="color:var(--mint)">apps</b> — this area is only the machine's naming machinery (zones, certificates, local names).</div>
+
       </div>
     </div>
 
@@ -2471,6 +4046,21 @@ async function loadSettingsView() {
         <div class="chips" style="margin:8px 0 0">
           <button class="btn small" data-set="daemon-ensure">ensure supervisor</button>
           <button class="btn small" data-set="daemon-stop">stop supervisor</button>
+        </div>
+        <div class="kvrow" style="margin-top:16px"><span class="lbl">backups</span>${(() => { const rows = backups.apps || []; const stateRow = rows.find((a) => a.state); const appsOnly = rows.filter((a) => !a.state); if (!rows.length) return chip(false, 'nothing backed up yet'); const done = appsOnly.filter((a) => a.snapshots > 0).length; const drilled = appsOnly.filter((a) => a.verified).length; return chip(true, done + ' of ' + appsOnly.length + ' app' + (appsOnly.length === 1 ? '' : 's') + ' backed up' + (drilled ? ' · ' + drilled + ' drilled ✓' : '') + (stateRow ? ' · control-plane state ✓' : ' · control-plane state: none yet')); })()}</div>
+        ${(backups.apps || []).filter((a) => a.snapshots > 0).length === 0 && (backups.apps || []).length ? '<div class="row" style="gap:8px;margin:6px 0 8px;flex-wrap:wrap"><span class="muted" style="font-size:11px;color:var(--warn)">no backup repo yet — nothing can be backed up until it exists</span><button class="mini-btn primary" data-bu-init>initialize the backup repo</button></div>' : ''}
+        <div id="bu-init-out" class="muted" style="font-size:11px;margin:0 0 8px"></div>
+        <div class="muted" style="font-size:11px;margin:6px 0 8px">per-app facts live on each card in <b style="color:var(--mint)">apps</b></div>
+        <div class="chips" style="margin:8px 0 0">
+          <button class="btn small primary" data-bu-run>back up everything now</button>
+          <button class="btn small" data-bu-check>restic check</button>
+        </div>
+        <div id="bu-out" class="muted" style="font-size:11px;margin-top:6px"></div>
+        <div class="kvrow" style="margin-top:16px"><span class="lbl">jobs</span>${(jobs.jobs || []).some((j) => !j.endedAt) ? chip(true, 'running — receipts land below') : chip(false, 'idle')}</div>
+        <div class="scrollwin" style="max-height:150px;margin:6px 0 8px">${machineJobs(jobs.jobs || []).slice(0, 6).map((j) => `<div class="row" style="gap:8px;padding:2px 0"><span class="mono" style="font-size:10.5px;min-width:96px">${escapeHtml(String(j.startedAt || '').replace('T', ' ').slice(11, 19))}</span><span class="chip ${j.endedAt ? (j.ok ? 'on' : 'off') : ''}" style="font-size:10px">${j.label ? escapeHtml(j.label) : escapeHtml(j.kind || 'job')}</span>${j.endedAt ? `<span style="color:${j.ok ? 'var(--mint)' : 'var(--bad)'};font-size:10px">${j.ok ? 'done ✓' : 'failed ✕'}</span>` : '<span style="color:var(--warn);font-size:10px">running…</span>'}</div>`).join('') || '<div class="muted" style="font-size:11px">no jobs yet</div>'}</div>
+        <div class="kvrow" style="margin-top:16px"><span class="lbl">reboot safety</span>${boot.installed == null ? chip(false, 'unknown') : boot.installed ? chip(true, 'installed' + (boot.loaded ? ' · loaded' : '')) : chip(false, 'not installed')}<span class="muted" style="font-size:10.5px">installed = the control plane starts at login and restores the machine after a reboot</span></div>
+        <div class="chips" style="margin:8px 0 0">
+          ${boot.installed ? '<button class="btn small" data-boot-act="remove">remove boot agent</button>' : '<button class="btn small primary" data-boot-act="install">install boot agent</button>'}
         </div>
       </div>
     </div>
@@ -2513,13 +4103,96 @@ async function loadSettingsView() {
         .then(() => { toast('zone removed'); loadSettingsView(); })
         .catch((err) => toast('[settings] ' + err.message));
     }));
+    // naming section extras: deSEC wizard, dns receipts, wildcard cert
+    const wizBtn = body.querySelector('[data-desec-wizard]');
+    if (wizBtn) wizBtn.addEventListener('click', () => body.querySelector('#desec-wizard').classList.toggle('hidden'));
+    const histBtn = body.querySelector('[data-dns-history]');
+    if (histBtn) histBtn.addEventListener('click', async () => {
+      const host = body.querySelector('#dns-history');
+      if (!host.classList.contains('hidden')) { host.classList.add('hidden'); return; }
+      host.classList.remove('hidden');
+      host.innerHTML = 'reading the receipts…';
+      try {
+        const d = await api.call('GET', '/api/domains/dns-history');
+        host.innerHTML = d.receipts.length
+          ? '<div class="muted" style="font-size:10.5px;margin-bottom:6px">' + d.receipts.length + ' write' + (d.receipts.length === 1 ? '' : 's') + ' on record · newest first</div><div class="scrollwin" style="max-height:180px">' + d.receipts.map((r) => `<div class="mono" style="font-size:10.5px;padding:2px 0;border-bottom:1px dashed rgba(125,160,255,.12)">${escapeHtml(String(r.at || '').replace('T', ' ').slice(0, 19))} · ${escapeHtml(r.type || 'record')} ${escapeHtml(r.record || '')} → ${escapeHtml(r.value || '')} <span style="color:var(--faint)">in ${escapeHtml(r.zone || '')} via ${escapeHtml(r.provider || 'dns')}</span></div>`).join('') + '</div>'
+          : '<div class="muted" style="font-size:11px">no DNS writes on record yet — the first publish (or auto-name on first push) lands here</div>';
+      } catch (err) { host.innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>'; }
+    });
+    body.querySelectorAll('[data-zone-cert]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      const zone = b.dataset.zoneCert;
+      const orig = b.textContent;
+      b.textContent = 'requesting from Let\'s Encrypt…';
+      try {
+        const r = await api.call('POST', '/api/domains/cert', { zone });
+        toast('wildcard cert installed for *.' + zone);
+        b.textContent = '🔒 cert ✓';
+        const out = body.querySelector('#zone-out');
+        if (out) out.textContent = 'certificate installed: ' + r.cert;
+        loadSettingsView();
+      } catch (err) {
+        toast('cert request failed: ' + err.message);
+        b.textContent = orig;
+      } finally { b.disabled = false; }
+    }));
+    body.querySelectorAll('.zcopy').forEach((b) => b.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy); toast('copied'); } catch { toast('copy blocked'); }
+    }));
+    // operations: backups + reboot safety
+    const buOut = () => body.querySelector('#bu-out');
+    const buRun = body.querySelector('[data-bu-run]');
+    if (buRun) buRun.addEventListener('click', async () => {
+      buRun.disabled = true; if (buOut()) buOut().textContent = 'snapshots running — receipts appear below when they land…';
+      try { const r = await api.call('POST', '/api/backup', { action: 'run' }); toast('backup running for ' + r.apps + ' app(s)'); setTimeout(loadSettingsView, 4000); }
+      catch (err) { toast('backup failed: ' + err.message); } finally { buRun.disabled = false; }
+    });
+    const buInit = body.querySelector('[data-bu-init]');
+    if (buInit) buInit.addEventListener('click', async () => {
+      buInit.disabled = true; buInit.textContent = 'initializing…';
+      const out = body.querySelector('#bu-init-out');
+      try {
+        const r = await api.call('POST', '/api/backup/init', {});
+        if (out) out.textContent = 'repo ready at ' + r.repo + ' — ' + r.note;
+        toast('backup repo initialized — back up everything now');
+        loadSettingsView();
+      } catch (err) { toast('init failed: ' + err.message); buInit.disabled = false; buInit.textContent = 'initialize the backup repo'; }
+    });
+    const buCheck = body.querySelector('[data-bu-check]');
+    if (buCheck) buCheck.addEventListener('click', async () => {
+      buCheck.disabled = true; if (buOut()) buOut().textContent = 'restic check running…';
+      try { await api.call('POST', '/api/backup', { action: 'check' }); toast('restic check started — the list refreshes when it lands'); setTimeout(loadSettingsView, 6000); }
+      catch (err) { toast('check failed: ' + err.message); } finally { buCheck.disabled = false; }
+    });
+    body.querySelectorAll('[data-boot-act]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = b.dataset.bootAct === 'install' ? 'installing…' : 'removing…';
+      try { await api.call('POST', '/api/boot', { action: b.dataset.bootAct }); toast('boot agent ' + (b.dataset.bootAct === 'install' ? 'installed — the plane comes back on its own after a reboot' : 'removed')); loadSettingsView(); }
+      catch (err) { toast('boot ' + b.dataset.bootAct + ' failed: ' + err.message); } finally { b.disabled = false; }
+    }));
   } catch (err) {
     body.innerHTML = '<span class="chip off">' + escapeHtml(err.message) + '</span>';
   }
 }
 
+// TWO-AREA LAW: the machine's job window shows machine work. Jobs that name an
+// app (backup <app>, drill <app>, cron: <app>) belong to that app's card, so
+// they are filtered out here rather than printing an app name in this area.
+function machineJobs(rows) {
+  return (rows || []).filter((j) => {
+    const label = String(j.label || '');
+    if (/^(maintenance|restic check|update)/i.test(label)) return true;
+    if (j.kind === 'check' || j.kind === 'update') return true;
+    return false;
+  });
+}
+// the app's own jobs, for its card (labels there are allowed — that IS apps)
+function appJobs(rows, name) {
+  return (rows || []).filter((j) => new RegExp('(^|\\s)' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|\\s)').test(String(j.label || '')) || String(j.label || '').endsWith(name));
+}
+
 async function settingsAction(act) {
   try {
+    if (act === 'open-update') { openUpdateModal(); return; }
     if (act === 'keys') { setView('machine'); return; }
     if (act === 'registration') {
       const s = await api.call('GET', '/api/settings');
@@ -2594,8 +4267,26 @@ async function mintInvite() {
       name: $('#invite-name').value || 'friend-node',
       ttlHours: Number($('#invite-ttl').value) || 24,
     });
+    // the peer URL the other machine must reach: the entry URL when this
+    // machine dials one, else the local control address (honest about it)
+    let peerUrl = 'http://127.0.0.1:5180';
+    let reachNote = 'works only for a member ON this machine — for a remote machine, connect an entry first (gitlive area → entry) and the URL updates';
+    try {
+      const e = await api.call('GET', '/api/entry');
+      if (e.client && e.client.configured && e.client.url) {
+        peerUrl = e.client.url;
+        reachNote = 'the URL this machine answers through its entry — reachable from the other machine';
+      }
+    } catch { /* local address fallback */ }
+    const join = 'gitlive mesh join ' + d.token + ' ' + peerUrl;
     out.innerHTML = '<textarea class="invtok" readonly onclick="this.select()">' + escapeHtml(d.token) + '</textarea>' +
-      '<div class="muted" style="font-size:11px;margin-top:6px">token copied-ready — select to copy · valid ' + (Number($('#invite-ttl').value) || 24) + 'h</div>';
+      '<div class="row" style="gap:8px;margin-top:8px"><code class="mono" style="flex:1;font-size:11px;padding:6px 8px;background:rgba(10,14,26,.6);border:1px solid var(--line);border-radius:6px;overflow-wrap:anywhere">' + escapeHtml(join) + '</code><button class="btn small zcopy" data-copy="' + escapeHtml(join) + '">⧉ copy</button></div>' +
+      '<div class="muted" style="font-size:10.5px;margin-top:6px">run that ON the new machine · token valid ' + (Number($('#invite-ttl').value) || 24) + 'h · ' + reachNote + '</div>';
+    const cb = out.querySelector('.zcopy');
+    if (cb) cb.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(cb.dataset.copy); toast('join command copied — run it on the new machine'); }
+      catch { toast('copy blocked'); }
+    });
   } catch (err) {
     out.innerHTML = '<div class="flash err">' + escapeHtml(err.message) + '</div>';
   }
@@ -2710,6 +4401,45 @@ $('#btn-viewmode').addEventListener('click', () => {
   loadApps();
 });
 
+// ── new project: open/close, folder picker, create ──────────────────────
+$('#btn-newapp').addEventListener('click', openNewApp);
+$('#btn-newapp-close').addEventListener('click', closeNewApp);
+$('#newapp-modal').addEventListener('click', (ev) => { if (ev.target && ev.target.id === 'newapp-modal') closeNewApp(); });
+$('#btn-na-browse').addEventListener('click', () => {
+  const b = $('#na-browser');
+  const opening = b.classList.contains('hidden');
+  b.classList.toggle('hidden', !opening);
+  if (opening) naBrowse(naState.browse || ($('#na-dir') || {}).value || '');
+});
+$('#btn-na-up').addEventListener('click', async () => {
+  const d = await naBrowse(naState.browse || '', false);
+  if (d && d.parent) naBrowse(d.parent, false);
+});
+$('#btn-na-home').addEventListener('click', () => naBrowse('', false));
+$('#btn-na-use').addEventListener('click', () => {
+  naSetField('na-dir', naState.browse, true);
+  naDetect(naState.browse);
+  toast('folder chosen — check the detected commands');
+});
+$('#na-browse-list').addEventListener('click', (ev) => {
+  const row = ev.target.closest('[data-na-go]');
+  if (row) naBrowse(row.dataset.naGo, false);
+});
+$('#btn-na-create').addEventListener('click', naCreate);
+// the owner typing their own path still gets detection + prefills
+let naDirTimer = null;
+$('#na-dir').addEventListener('input', () => {
+  clearTimeout(naDirTimer);
+  naDirTimer = setTimeout(() => naDetect($('#na-dir').value), 450);
+});
+for (const id of ['na-name', 'na-start', 'na-install', 'na-build', 'na-port']) {
+  const el = $('#' + id);
+  if (el) el.addEventListener('input', () => { naState.dirty.add(id); });
+}
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && !$('#newapp-modal').classList.contains('hidden')) closeNewApp();
+});
+
 // ── on-page diagnostic (?diag=1): prints the live state ONTO the page so
 // the operator never needs a console — green lines, plain facts.
 // NO SECRETS: the session token is never printed (it once leaked its first
@@ -2772,11 +4502,11 @@ if (new URLSearchParams(location.search).get('diag') === '1') {
 // ══ engagement program · stage 1: theme engine + command bar ════════════
 (function () {
   const SKINS = {
-    ops:      { name: 'aurora', a: '#5fd6ff', b: '#a78bfa', c: '#05070d' },
-    synthwave: { name: 'synthwave', a: '#ff2fd6', b: '#2be3ff', c: '#0b0217' },
-    light:    { name: 'light paper', a: '#0068e0', b: '#6d3df0', c: '#f2f4fa' },
-    contrast: { name: 'high contrast', a: '#00e5ff', b: '#00ff88', c: '#000000' },
-    custom:   { name: 'custom', a: '#5fd6ff', b: '#3ee6a8', c: '#05070d' },
+    ops:      { name: 'instrument', a: '#f5a524', b: '#6ea8d8', c: '#0c0c0e' },
+    graphite: { name: 'graphite', a: '#b9b8b0', b: '#7f7e78', c: '#101012' },
+    light:    { name: 'paper', a: '#b06a00', b: '#2f5d8a', c: '#f6f5f1' },
+    contrast: { name: 'high contrast', a: '#ffb000', b: '#8fd0ff', c: '#000000' },
+    custom:   { name: 'custom', a: '#f5a524', b: '#5cc98d', c: '#0c0c0e' },
   };
   const TOKENS = ['bg0', 'bg1', 'txt', 'dim', 'faint', 'cy', 'mint', 'warn', 'bad'];
 
@@ -2916,19 +4646,23 @@ if (new URLSearchParams(location.search).get('diag') === '1') {
     push('view', 'entry', 'entry node · NAT relay', () => setView('machine'));
     push('view', 'keys', 'trust anchors · duress · dead-man', () => setView('machine'));
     push('view', 'events', 'audit log', () => setView('machine'));
-    push('view', 'settings', 'node · naming & domains · protection · operations · appearance', () => setView('machine'));
+    push('view', 'settings', 'node · naming & domains · protection · operations', () => setView('machine'));
+    push('system', 'checkup', 'the node checkup — one fix per row', () => { setView('machine'); });
+    push('system', 'support bundle', 'copy every machine fact (no secrets)', () => { setView('machine'); document.getElementById('btn-support') && document.getElementById('btn-support').click(); });
     push('system', 'refresh', 'reload app data + rail', () => { loadApps(); loadStatusRail(); });
     push('system', 'welcome', 're-open the first-run checklist', () => showWelcome());
     for (const a of (state.apps || [])) {
       push('app', a.name + ' — open', (a.cwd || ''), () => { setView('apps'); showDetail(a.name); });
       push('app', 'receipt for ' + a.name, 'copy the SLSA attestation', () => copyReceiptFor(a.name));
       push('app', 'health of ' + a.name, '24h meter + probes', () => { setView('apps'); showDetail(a.name); });
+      push('app', 'diagnose ' + a.name, 'the troubleshoot chain — why down, one fix per hop', () => { setView('apps'); showDetail(a.name); setTimeout(() => runDiagnose(a.name), 600); });
       if (!a.connect) {
         push('app', 'restart ' + a.name, a.safe ? 'revive proxy' : 'restart process', () => runAppAction(a.name, 'restart'), true);
         push('app', 'stop ' + a.name, 'stop running process(es)', () => runAppAction(a.name, 'stop'), true);
+        push('app', 'back up ' + a.name, 'encrypted restic snapshot, receipted', () => { setView('apps'); showDetail(a.name); }, false);
         if (a.safe) {
           push('app', 'deploy ' + a.name, 'redeploy current commit', () => runAppAction(a.name, 'deploy'), true);
-          push('app', 'rollback ' + a.name, 'previous successful commit', () => runAppAction(a.name, 'rollback'), true);
+          push('app', 'rollback ' + a.name, 'previous successful commit — code AND env', () => runAppAction(a.name, 'rollback'), true);
         }
       }
     }
@@ -3197,11 +4931,18 @@ if (new URLSearchParams(location.search).get('diag') === '1') {
 
   function showStage(id) {
     const verb = el('th-verb');
-    verb.innerHTML = '<span style="color:var(--cy);font-size:10px;letter-spacing:1.6px;text-transform:uppercase">' + id + '</span> — <b>' + VERBS[id] + '</b>';
+    const excerpt = cur && cur.excerpts && cur.excerpts[id];
+    verb.innerHTML = '<span style="color:var(--cy);font-size:10px;letter-spacing:1.6px;text-transform:uppercase">' + id + '</span> — <b>' + VERBS[id] + '</b>' +
+      (excerpt ? ' <button class="mini-btn th-copy" data-copy="' + escapeHtml(excerpt) + '">⧉ copy this step\'s log</button>' : '');
+    const cp = verb.querySelector('.th-copy');
+    if (cp) cp.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(cp.dataset.copy); toast('step log copied'); }
+      catch { toast('copy blocked'); }
+    });
     const log = el('th-log');
-    if (cur && cur.excerpts && cur.excerpts[id]) {
+    if (excerpt) {
       log.classList.remove('hidden');
-      log.textContent = cur.excerpts[id];
+      log.textContent = excerpt;
     } else { log.classList.add('hidden'); }
   }
 
@@ -3431,7 +5172,7 @@ if (new URLSearchParams(location.search).get('diag') === '1') {
   };
   const SEV_COLOR = { crit: 'var(--bad)', warn: 'var(--warn)', ok: 'var(--mint)', dim: 'var(--faint)' };
   window.__evSev = (kind) => (EXPLAIN[kind] || EXPLAIN.raw).sev;
-  let lastEvents = [], lastHead = null, evTimer = null;
+  let lastEvents = [], lastHead = null, evTimer = null, evFilter = 'all', selectedEvKey = null;
 
   function esc(x) { return String(x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
   function ago(iso) { const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000); if (s < 60) return 'now'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; if (s < 86400) return Math.floor(s / 3600) + 'h ago'; return Math.floor(s / 86400) + 'd ago'; }
@@ -3501,35 +5242,61 @@ if (new URLSearchParams(location.search).get('diag') === '1') {
       lastHead = head ? { at: head.at, kind: head.kind } : null;
       lastEvents = rows;
       const body = $('#events-body');
+      const sevOf = (e) => (EXPLAIN[e.kind] || EXPLAIN.raw).sev;
+      const counts = { all: rows.length, crit: rows.filter((e) => sevOf(e) === 'crit').length, warn: rows.filter((e) => sevOf(e) === 'warn').length, info: rows.filter((e) => sevOf(e) === 'info' || sevOf(e) === 'dim' || sevOf(e) === 'ok').length };
+      const chips = '<div class="chips" style="margin:0 0 10px">' + ['all', 'crit', 'warn', 'info'].map((f) =>
+        '<button class="nchip' + (evFilter === f ? ' on' : '') + '" data-evfilter="' + f + '">' + f + (counts[f] ? ' · ' + counts[f] : '') + '</button>').join('') + '</div>';
+      const shown = (evFilter === 'all' ? rows : rows.filter((e) => {
+        const s = sevOf(e);
+        return evFilter === 'crit' ? s === 'crit' : evFilter === 'warn' ? s === 'warn' : (s === 'info' || s === 'dim' || s === 'ok');
+      })).map((e) => ({ e, idx: rows.indexOf(e) }));
+      const keepScroll = (() => { const w = body.querySelector('.scrollwin'); return w ? w.scrollTop : 0; })();
       body.innerHTML = rows.length
-        ? rows.map((e, i) => {
-            const meta = EXPLAIN[e.kind] || EXPLAIN.raw;
-            const color = SEV_COLOR[meta.sev] || SEV_COLOR.dim;
-            return '<div class="ev-row' + (fresh && i === 0 ? ' flashrow' : '') + '" data-i="' + i + '" style="display:flex;gap:10px;align-items:center;padding:6px 2px;border-bottom:1px dashed rgba(125,160,255,.1);cursor:pointer;border-radius:6px">' +
-              '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex:none;' + (meta.sev === 'ok' || meta.sev === 'crit' ? 'box-shadow:0 0 8px ' + color : '') + '"></span>' +
-              '<span class="mono" style="min-width:150px;color:var(--faint);font-size:11px">' + esc(String(e.at || '').replace('T', ' ').slice(0, 19)) + '</span>' +
-              '<span class="chip" style="color:' + color + ';border-color:' + color + '55">' + esc(e.kind || 'event') + '</span>' +
-              '<span class="mono muted" style="font-size:11px;flex:1">' + esc(evSumm(e) || (e.detail != null ? String(e.detail) : '')) + '</span>' +
-              '<span class="ago">' + (e.at ? ago(e.at) : '') + '</span><span class="rowarrow">›</span></div>';
-          }).join('')
+        ? chips +
+          '<div class="muted" style="font-size:10.5px;margin:0 0 6px">' + rows.length + ' event' + (rows.length === 1 ? '' : 's') + ' on record · newest first · scroll the window, click any row to inspect</div>' +
+          '<div class="scrollwin">' + (shown.length
+          ? shown.map(({ e, idx }, i) => {
+              const meta = EXPLAIN[e.kind] || EXPLAIN.raw;
+              const color = SEV_COLOR[meta.sev] || SEV_COLOR.dim;
+              return '<div class="ev-row' + (fresh && i === 0 ? ' flashrow' : '') + '" data-i="' + idx + '" data-evkey="' + esc(String(e.at || '') + '|' + String(e.kind || '')) + '" style="display:flex;gap:10px;align-items:center;padding:6px 2px;border-bottom:1px dashed rgba(125,160,255,.1);cursor:pointer;border-radius:6px">' +
+                '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex:none;' + (meta.sev === 'ok' || meta.sev === 'crit' ? 'box-shadow:0 0 8px ' + color : '') + '"></span>' +
+                '<span class="mono" style="min-width:150px;color:var(--faint);font-size:11px">' + esc(String(e.at || '').replace('T', ' ').slice(0, 19)) + '</span>' +
+                '<span class="chip" style="color:' + color + ';border-color:' + color + '55">' + esc(e.kind || 'event') + '</span>' +
+                '<span class="mono muted" style="font-size:11px;flex:1">' + esc(evSumm(e) || (e.detail != null ? String(e.detail) : '')) + '</span>' +
+                '<span class="ago">' + (e.at ? ago(e.at) : '') + '</span><span class="rowarrow">›</span></div>';
+            }).join('')
+          : '<div class="muted" style="font-size:11px;padding:8px 0">nothing of that severity — clear the filter to see the whole log</div>') + '</div>'
         : viewEmpty(
             '<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8h3l1.4-3.8 3 7.6L10.6 8h3.9"/></svg>',
             'No events on record',
             'The audit log exists for the moments that matter: deploys, duress, dead-man, key rotations, refused pushes. A quiet log is a quiet machine.',
             [],
           );
+      // the auto-refresh must never yank the view out from under the owner:
+      // keep the scroll position and the selected row across rebuilds
+      const w2 = body.querySelector('.scrollwin');
+      if (w2) w2.scrollTop = keepScroll;
+      if (selectedEvKey) {
+        const sel = body.querySelector('.ev-row[data-evkey="' + selectedEvKey + '"]');
+        if (sel) sel.style.outline = '1px solid var(--cy)';
+      }
+      for (const b of body.querySelectorAll('[data-evfilter]')) {
+        b.addEventListener('click', () => { evFilter = b.dataset.evfilter; loadEventsView(); });
+      }
     } catch (err) {
       $('#events-body').innerHTML = '<span class="chip off">' + esc(err.message) + '</span>';
     }
   };
 
-  // row click → inspector (delegated; rows are rebuilt every refresh)
+  // row click → inspector (delegated; rows are rebuilt every refresh —
+  // data-i carries the MASTER index so filters never mis-map a click)
   document.addEventListener('click', (e) => {
     const row = e.target.closest('.ev-row');
     if (!row) return;
     const idx = Number(row.dataset.i);
     const entry = lastEvents[idx];
     if (!entry) return;
+    selectedEvKey = row.dataset.evkey || String(idx);
     for (const r of document.querySelectorAll('.ev-row')) r.style.outline = 'none';
     row.style.outline = '1px solid var(--cy)';
     renderInspector(entry, idx);

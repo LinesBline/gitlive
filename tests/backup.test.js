@@ -162,6 +162,20 @@ function calls() {
   try { cli(['backup', 'init'], { env: { ...env, GITLIVE_RESTIC: '/nonexistent/restic' } }); } catch (err) { noRestic = String(err.stdout || '') + String(err.stderr || ''); }
   assert(/restic is not installed/.test(noRestic), 'missing restic is an honest, actionable error:\n' + noRestic);
 
+  // ── 7) control-plane state: backed up under its own tag, secrets excluded ──
+  cli(['backup', 'init']);
+  const stateOut = cli(['backup', 'state']);
+  assert(/control-plane state: snapshot/.test(stateOut), 'state backup reports its snapshot:\n' + stateOut);
+  assert(/EXCLUDED \(secrets, on purpose\)/.test(stateOut) && /DNS tokens/.test(stateOut) && /backup password/.test(stateOut), 'the receipt says which secrets were excluded:\n' + stateOut);
+  const stateReceipts = path.join(home, '.gitlive', 'control', 'backup-history.jsonl');
+  assert(fs.existsSync(stateReceipts), 'the state receipt is written next to the control state');
+  const receipt = JSON.parse(fs.readFileSync(stateReceipts, 'utf8').trim().split('\n').pop());
+  assert(receipt.app === 'control-plane' && Array.isArray(receipt.excluded) && receipt.excluded.length >= 3, 'the receipt records the exclusion list');
+  // the snapshot must not have captured any key material, even though it exists
+  const content = path.join(repo, 'content');
+  const copied = fs.existsSync(content) ? require('child_process').execSync('find ' + JSON.stringify(content) + ' -type f -name "*.key" || true', { encoding: 'utf8' }).trim() : '';
+  assert(!copied, 'no key material entered the snapshot:\n' + copied);
+
   console.log('ALL BACKUP TESTS PASSED');
 })().catch((err) => {
   console.error(err.message);

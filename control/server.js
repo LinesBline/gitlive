@@ -24,10 +24,14 @@ const crypto = require('node:crypto');
 const net = require('node:net');
 let DatabaseSync = null;
 try { ({ DatabaseSync } = require('node:sqlite')); } catch { /* node < 22.5: datamap degrades to files-only */ }
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 
 const gitlive = require(path.join(__dirname, '..', 'gitlive.js'));
 const gitliveClient = require(path.join(__dirname, '..', 'gitlive-client'));
+// the v4 intelligence layer: measurement, detection and explanation over the
+// machine's own ledgers. Pure functions + two small files (policies, agent
+// state) — it never touches the network and never invents a number.
+const intel = require('./intel.js');
 
 const DASHBOARD_PATH = path.join(__dirname, 'dashboard.html');
 const CONTROL_ROOT = process.env.GITLIVE_CONTROL_DIR || path.join(os.homedir(), '.gitlive', 'control');
@@ -42,6 +46,48 @@ function json(res, status, body) {
   }));
   res.end(payload);
 }
+// ── access log: one line per request, never a body or a secret ────────────
+// A local plane still needs to answer "what failed, when, how long" — the
+// reference rule is log enough to debug, never enough to leak. Rotates at
+// 5 MB so an idle machine cannot fill its disk with our own noise.
+const ACCESS_LOG = path.join(os.homedir(), '.gitlive', 'control', 'access.log');
+function accessLog(line) {
+  try {
+    fs.mkdirSync(path.dirname(ACCESS_LOG), { recursive: true });
+    if (fs.existsSync(ACCESS_LOG) && fs.statSync(ACCESS_LOG).size > 5 * 1024 * 1024) {
+      const buf = fs.readFileSync(ACCESS_LOG);
+      fs.writeFileSync(ACCESS_LOG, buf.slice(Math.floor(buf.length / 2)));
+    }
+    fs.appendFileSync(ACCESS_LOG, line + '\n');
+  } catch { /* the log must never break a request */ }
+}
+function newRequestId() { return crypto.randomBytes(4).toString('hex'); }
+
+// delivery ids seen in the last 24h — bounded to 500 entries, oldest dropped
+const REPLAY_LEDGER = path.join(os.homedir(), '.gitlive', 'control', 'webhook-deliveries.jsonl');
+function replaySeen(delivery) {
+  try {
+    const now = Date.now();
+    let rows = [];
+    if (fs.existsSync(REPLAY_LEDGER)) {
+      rows = fs.readFileSync(REPLAY_LEDGER, 'utf8').trim().split('\n').filter(Boolean)
+        .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)
+        .filter((r) => r.at && now - new Date(r.at).getTime() < 24 * 3600 * 1000)
+        .slice(-500);
+    }
+    if (rows.some((r) => r.id === delivery)) {
+      fs.writeFileSync(REPLAY_LEDGER, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+      return true;
+    }
+    rows.push({ id: delivery, at: new Date().toISOString() });
+    fs.mkdirSync(path.dirname(REPLAY_LEDGER), { recursive: true });
+    fs.writeFileSync(REPLAY_LEDGER, rows.slice(-500).map((r) => JSON.stringify(r)).join('\n') + '\n');
+    return false;
+  } catch {
+    return false; // a broken ledger must not block legitimate deploys
+  }
+}
+
 // every response gets the leak-basic hygiene; the dashboard additionally
 // gets a CSP that pins scripts/styles/fonts to this origin.
 function securityHeaders(extra = {}) {
@@ -56,7 +102,28 @@ function dashboardCsp() {
 }
 
 function ok(res, data) { json(res, 200, { ok: true, data }); }
-function fail(res, status, code, message) { json(res, status, { ok: false, error: { code, message } }); }
+function fail(res, status, code, message, details) {
+  // `details` is optional and additive: the dashboard reads it to show the
+  // REAL process output behind a failure (e.g. the log of a `gitlive init`
+  // the create-app form ran) instead of a one-line paraphrase of it.
+  //
+  // Every error that leaves the plane passes through the secret redactor: an
+  // error message is exactly where a token ends up (a failed ACME call quotes
+  // its URL, a failed app start quotes its command line with the credentials
+  // in it). This is one boundary, so no route can forget it.
+  const redact = require('./redact.js');
+  json(res, status, {
+    ok: false,
+    error: {
+      code,
+      message: redact.redactSecrets(message),
+      ...(details ? { details: redact.shareableDeep(details, { names: knownAppNames(), home: os.homedir() }) } : {}),
+    },
+  });
+}
+function knownAppNames() {
+  try { return Object.keys(gitlive.loadRegistry()); } catch { return []; }
+}
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -107,6 +174,7 @@ const PUBLIC_CHECK_TIMEOUT_MS = 6000;
 
 const publicUa = () => `gitlive-control-plane/${gitlive.VERSION}`;
 async function publicFetch(url, accept) {
+  if (!outboundAllowed()) throw new Error('outbound checks are switched off (GITLIVE_OFFLINE=1)');
   const r = await fetch(url, {
     headers: { ...(accept ? { accept } : {}), 'user-agent': publicUa() },
     signal: AbortSignal.timeout(PUBLIC_CHECK_TIMEOUT_MS),
@@ -266,6 +334,463 @@ const localExecutor = {
 };
 
 // ── ops views (dashboard redesign, round 2026-09-09) ─────────────────────
+// certificate visibility: every cert gitlive holds + its days-left (parsed
+// with node's built-in X509 — no openssl dependency)
+// scheduled tasks: the plane's own cron ticker. 5-field classic cron with an
+// optional leading seconds field (tests use it). Every fire lands in the job
+// ledger (kind 'cron') + the audit events log — never a silent run.
+const CRON_INTERVAL_MS = Number(process.env.GITLIVE_CRON_INTERVAL_MS) || 60000;
+function cronFieldMatch(field, val) {
+  if (field === '*') return true;
+  for (const part of String(field).split(',')) {
+    if (part.includes('/')) {
+      const [base, step] = part.split('/');
+      if (base !== '*' || !Number(step)) continue;
+      if (val % Number(step) === 0) return true;
+    } else if (String(part) === String(val)) {
+      return true;
+    }
+  }
+  return false;
+}
+function cronDue(cron, now) {
+  const parts = String(cron || '').trim().split(/\s+/);
+  let sec = null;
+  if (parts.length === 6) sec = parts.shift();
+  if (parts.length !== 5) return false;
+  const [m, h, dom, mon, dow] = parts;
+  const base = cronFieldMatch(m, now.getMinutes()) && cronFieldMatch(h, now.getHours()) &&
+    cronFieldMatch(dom, now.getDate()) && cronFieldMatch(mon, now.getMonth() + 1) && cronFieldMatch(dow, now.getDay());
+  return base && (sec === null || cronFieldMatch(sec, now.getSeconds()));
+}
+const cronFired = new Map();
+function cronTick() {
+  try {
+    const reg = gitlive.loadRegistry();
+    const now = new Date();
+    for (const [name, app] of Object.entries(reg)) {
+      const sch = app.schedule;
+      if (!sch || sch.enabled === false) continue;
+      if (!cronDue(sch.cron, now)) continue;
+      const key = name + '@' + now.toISOString().slice(0, 19);
+      if (cronFired.get(key)) continue;
+      cronFired.set(key, true);
+      spawnDetached('/bin/bash', ['-c', String(sch.cmd)], 'cron', 'cron: ' + name);
+      try { require('../crypt.js').logEvent('cron', { app: name, cron: sch.cron, cmd: String(sch.cmd).slice(0, 120) }); } catch { /* audit best-effort */ }
+    }
+  } catch { /* the ticker must never crash the plane */ }
+}
+let cronTimer = null;
+let sessionPruneTimer = null;
+function cronStart() { if (!cronTimer) cronTimer = setInterval(cronTick, CRON_INTERVAL_MS); }
+
+function certsOverview() {
+  const rows = [];
+  const add = (domain, crtPath, kind) => {
+    try {
+      if (!fs.existsSync(crtPath)) { rows.push({ domain, kind, present: false, daysLeft: null, status: 'missing' }); return; }
+      const pem = fs.readFileSync(crtPath, 'utf8');
+      const cert = new crypto.X509Certificate(pem);
+      const daysLeft = Math.round((new Date(cert.validTo).getTime() - Date.now()) / 86400000);
+      // the lifetime travels with the row: renewal lead time is a fraction of
+      // it, because CA lifetimes are shrinking (200d → 100d → 47d)
+      const lifetimeDays = Math.max(1, Math.round((new Date(cert.validTo).getTime() - new Date(cert.validFrom).getTime()) / 86400000));
+      const lead = Math.max(14, Math.min(30, Math.round(lifetimeDays * 0.15)));
+      rows.push({ domain, kind, present: true, daysLeft, lifetimeDays, leadDays: lead, expiresAt: cert.validTo, status: daysLeft < 0 ? 'expired' : daysLeft <= lead ? 'expiring' : 'ok' });
+    } catch (err) {
+      rows.push({ domain, kind, present: true, daysLeft: null, status: 'unparsable', note: err.message || String(err) });
+    }
+  };
+  // local gateway certs
+  try {
+    const tls = gitlive.domainTlsPaths();
+    add('*.gitlive (local gateway)', tls.srvCrt, 'local');
+  } catch { /* no local tls */ }
+  // public-domain certs
+  try {
+    const dir = gitlive.publicCertDir();
+    if (fs.existsSync(dir)) {
+      for (const f of fs.readdirSync(dir)) {
+        if (f.endsWith('.crt')) add(f.slice(0, -4), path.join(dir, f), 'public');
+      }
+    }
+  } catch { /* no public certs */ }
+  // zone wildcard certs (stored per zone)
+  try {
+    const zones = gitlive.loadZones();
+    for (const z of Object.keys(zones)) {
+      const crt = path.join(gitlive.publicCertDir(), '*.' + z + '.crt');
+      if (fs.existsSync(crt)) add('*.' + z, crt, 'wildcard');
+    }
+  } catch { /* zones optional */ }
+  return { certs: rows };
+}
+let npmLatestCache = { at: 0, version: null };
+// OUTBOUND IS OPT-IN-ABLE. Two things on this machine call out on their own:
+// the npm version check and the public-repo check. Both are read-only and send
+// nothing but the request — but a self-hosted machine should be able to say
+// "never call out", and then the cockpit says it too instead of failing.
+function outboundAllowed() { return String(process.env.GITLIVE_OFFLINE || '0') !== '1'; }
+async function npmLatestVersion() {
+  if (!outboundAllowed()) return null;
+  if (Date.now() - npmLatestCache.at < 5 * 60 * 1000 && npmLatestCache.version) return npmLatestCache.version;
+  try {
+    const r = await publicFetch(PUBLIC_NPM_URL, 'application/json');
+    if (!r.ok) return npmLatestCache.version;
+    const j = await r.json();
+    npmLatestCache = { at: Date.now(), version: String(j.version || '') || npmLatestCache.version };
+  } catch { /* offline — keep the cache */ }
+  return npmLatestCache.version;
+}
+function semverGt(a, b) {
+  try {
+    const pa = String(a).split('.').map((x) => parseInt(x, 10) || 0);
+    const pb = String(b).split('.').map((x) => parseInt(x, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const d = (pa[i] || 0) - (pb[i] || 0);
+      if (d !== 0) return d > 0;
+    }
+    return false;
+  } catch { return false; }
+}
+// dns write receipts: every publishAppDns/auto-name write lands in the app's
+// own dns-history.jsonl — merged here newest-first so the naming section can
+// show the paper trail.
+function dnsHistoryData() {
+  const reg = gitlive.loadRegistry();
+  const rows = [];
+  for (const [name, app] of Object.entries(reg)) {
+    if (!app.runPath) continue;
+    const f = path.join(app.runPath, 'dns-history.jsonl');
+    if (!fs.existsSync(f)) continue;
+    for (const line of fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean)) {
+      try { rows.push({ app: name, ...JSON.parse(line) }); } catch { /* skip malformed */ }
+    }
+  }
+  rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  return { receipts: rows.slice(0, 20) };
+}
+
+// the app troubleshoot chain — hops from process to public DNS, each with
+// one honest fix. Reads and probes; never changes anything.
+async function appDiagnose(appName) {
+  const net = require('node:net');
+  const reg = gitlive.loadRegistry();
+  const app = reg[appName];
+  if (!app) throw new Error('No app named "' + appName + '"');
+  const rows = [];
+  const push = (hop, status, title, detail, fix) => rows.push({ hop, status, title, detail, fix: fix || null });
+  const alivePid = (p) => {
+    if (!p) return false;
+    try { process.kill(Number(p), 0); return true; } catch { return false; }
+  };
+  const portOpen = (port) => new Promise((resolve) => {
+    if (!port) return resolve(false);
+    const s = net.connect({ host: '127.0.0.1', port }, () => { s.destroy(); resolve(true); });
+    s.on('error', () => resolve(false));
+    s.setTimeout(1200, () => { s.destroy(); resolve(false); });
+  });
+
+  if (app.mode === 'connect') {
+    push('runner', 'warn', 'Managed by its own runner', 'connect-mode apps are owned by launchd/systemd — gitlive holds the repo, the OS holds the process. Check that machine, not this dashboard.', null);
+    return { app: appName, rows };
+  }
+
+  // hop 1 — the process (or proxy, for safe apps)
+  const runPath = app.runPath;
+  let proxyPid = null, slotPid = null;
+  if (app.safe) {
+    proxyPid = (() => { try { return fs.readFileSync(path.join(runPath, 'proxy.pid'), 'utf8').trim(); } catch { return null; } })();
+    const slot = (() => { try { return fs.readFileSync(path.join(runPath, 'active-slot'), 'utf8').trim(); } catch { return ''; } })();
+    slotPid = slot ? (() => { try { return fs.readFileSync(path.join(runPath, slot + '.pid'), 'utf8').trim(); } catch { return null; } })() : null;
+    if (alivePid(proxyPid)) push('proxy', 'ok', 'The public proxy is alive', 'pid ' + proxyPid, null);
+    else push('proxy', 'fail', 'The public proxy is down', 'the backend slot may be healthy but nobody is answering the public port', { kind: 'action', label: '↻ restart (revives the proxy)', action: 'restart' });
+    if (alivePid(slotPid)) push('process', 'ok', 'The app process is alive', 'slot pid ' + slotPid, null);
+    else push('process', 'fail', 'The app process is down', 'the proxy is up but the slot behind it is dead', { kind: 'action', label: '▲ deploy (brings the slot back)', action: 'deploy' });
+  } else {
+    const pid = (() => { try { return fs.readFileSync(path.join(runPath, 'app.pid'), 'utf8').trim(); } catch { return null; } })();
+    if (alivePid(pid)) push('process', 'ok', 'The app process is alive', 'pid ' + pid, null);
+    else push('process', 'fail', 'The app process is down', 'the pid file has no living process behind it', { kind: 'action', label: '↻ restart it', action: 'restart' });
+  }
+
+  // hop 2 — the port actually answers
+  const port = app.safe ? app.publicPort : app.port;
+  const open = await portOpen(port);
+  if (!port) push('port', 'skip', 'No port recorded', 'the registry has no port for this app — reconnect it or re-init', null);
+  else if (open) push('port', 'ok', 'The port is answering', 'port ' + port + ' accepts connections', null);
+  else push('port', 'warn', 'The port is silent', 'the process may be up but not listening on ' + port + ' — check its own start log', { kind: 'link', label: 'open the deploy log', target: 'log' });
+
+  // hop 3 — health probe (safe apps have a real health path)
+  if (app.safe && port) {
+    try {
+      const hp = app.healthPath || '/';
+      const r = await fetch('http://127.0.0.1:' + port + hp, { signal: AbortSignal.timeout(2500) });
+      if (r.ok) push('health', 'ok', 'The health path answers', 'GET ' + hp + ' → ' + r.status, null);
+      else push('health', 'warn', 'The health path answers, but not 2xx', 'GET ' + hp + ' → ' + r.status + ' — the app sees itself as unhealthy', null);
+    } catch {
+      push('health', 'warn', 'The health path does not answer', 'the port is open but the health probe timed out — the app may still be booting, or crashed mid-start', { kind: 'link', label: 'open the deploy log', target: 'log' });
+    }
+  } else {
+    push('health', 'skip', 'No health probe for plain-mode apps', 'plain apps are trusted on their port alone — the exam adds probes when it goes public', null);
+  }
+
+  // hop 4 — local names gateway (how the machine reaches <app>.gitlive)
+  try {
+    const dn = domainsOverview().local;
+    if (dn.on) push('name', 'ok', 'Local names are on', 'the gateway answers <app>.gitlive on port ' + (dn.port || '?'), null);
+    else push('name', 'warn', 'Local names are off', 'the app runs, but <app>.gitlive does not answer', { kind: 'action', label: 'names on', action: 'local-on' });
+  } catch (err) {
+    push('name', 'warn', 'Local names status unknown', err.message || String(err), null);
+  }
+
+  // hop 5 — public path: domains + certs + LIVE DNS read-back (when a zone
+  // with a token covers the name, the chain asks the zone what it answers)
+  const domains = Array.isArray(app.domains) ? app.domains : [];
+  if (!domains.length) {
+    push('public', 'skip', 'No public name yet', 'claim a zone label on the card, or graduate to your own domain — then this hop lights up', { kind: 'link', label: 'open the card', target: 'apps' });
+  } else {
+    const tls = gitlive.domainTlsPaths();
+    const certs = [];
+    for (const d of domains) {
+      const crt = path.join(gitlive.publicCertDir(), d + '.crt');
+      if (fs.existsSync(crt)) certs.push(d);
+    }
+    if (certs.length === domains.length) push('public', 'ok', 'Every domain has its certificate installed', domains.length + ' domain(s)', null);
+    else push('public', 'warn', 'Some domains lack a certificate', 'https will fail for: ' + domains.filter((d) => !certs.includes(d)).join(', '), { kind: 'link', label: 'open naming (wildcard cert)', target: 'naming' });
+    // live DNS read-back — the honest truth of what the world sees
+    const zones = gitlive.loadZones();
+    const ip = (() => { try { return gitlive.publicIpv6(); } catch { return null; } })();
+    for (const d of domains) {
+      const zone = Object.keys(zones).find((z) => d === z || d.endsWith('.' + z));
+      if (!zone) {
+        push('dns', 'skip', 'DNS for ' + d + ' — no covering zone registered', 'the name is your own domain: check it at your registrar (A/AAAA → this machine or your entry)', null);
+        continue;
+      }
+      const zc = zones[zone];
+      if (!zc || !zc.dnsToken) {
+        push('dns', 'warn', 'DNS for ' + d + ' — zone has no token', 'paste the zone\'s DNS token in Settings → naming and the chain can read the live record', { kind: 'link', label: 'open naming', target: 'naming' });
+        continue;
+      }
+      try {
+        const sub = d === zone ? '' : d.slice(0, -(zone.length + 1));
+        const acme = require('../acme.js');
+        const rec = await acme.providers.desec.getRecord({
+          token: zc.dnsToken, zone, subname: sub || '', type: 'AAAA',
+          fetchImpl: (u, o) => fetch(u, { ...o, signal: AbortSignal.timeout(5000) }),
+        });
+        if (!rec.exists) {
+          push('dns', 'fail', 'DNS for ' + d + ' — no AAAA published', 'the zone answers nothing for this name — publish it (the card\'s claim, or: gitlive name publish)', { kind: 'link', label: 'open the card', target: 'apps' });
+        } else if (ip && rec.values.includes(ip)) {
+          push('dns', 'ok', 'DNS for ' + d + ' answers with this machine', 'AAAA ' + rec.values.join(', ') + ' → your public IPv6', null);
+        } else {
+          push('dns', 'warn', 'DNS for ' + d + ' points elsewhere', 'the zone answers: ' + rec.values.join(', ') + (ip ? ' — this machine is ' + ip + '; re-publish to point the name here' : ' — and this machine has no public IPv6 right now'), { kind: 'link', label: 'open the card', target: 'apps' });
+        }
+      } catch (err) {
+        push('dns', 'warn', 'DNS read for ' + d + ' could not complete', err.message || String(err), null);
+      }
+    }
+  }
+
+  return { app: appName, checkedAt: new Date().toISOString(), rows };
+}
+
+// ── v4 · the intelligence layer's view of the machine ──────────────────
+// Everything the score and the detectors need, gathered from the SAME sources
+// the checkup reads (no second implementation of any fact).
+function diskFacts() {
+  try {
+    const df = execFileSync('df', ['-k', os.homedir()], { encoding: 'utf8', timeout: 3000 }).trim().split('\n')[1];
+    if (!df) return { diskFreeMb: null, diskTotalMb: null };
+    const parts = df.split(/\s+/);
+    const totalKb = Number(parts[1]);
+    const availKb = Number(parts[3]);
+    return {
+      diskFreeMb: Number.isFinite(availKb) ? Math.round(availKb / 1024) : null,
+      diskTotalMb: Number.isFinite(totalKb) ? Math.round(totalKb / 1024) : null,
+    };
+  } catch { return { diskFreeMb: null, diskTotalMb: null }; }
+}
+
+function integrityFact() {
+  try { return gitlive.integrityCheck().ok === true; } catch { return null; }
+}
+
+function listAppsForIntel() {
+  try { return Object.keys(gitlive.loadRegistry()); } catch { return []; }
+}
+
+// the resource series the trend detectors read: RSS, data size, log size and
+// free disk, sampled on a slow cadence (5 min) and capped like health history
+const STATS_INTERVAL_MS = Number(process.env.GITLIVE_STATS_INTERVAL_MS) || 5 * 60 * 1000;
+function statsFileFor(app) { return path.join(app.runPath, 'stats-history.jsonl'); }
+function sampleOneStats(app, name) {
+  const out = { app: name, at: new Date().toISOString(), rssMb: null, dataBytes: null, logBytes: null, diskFreeMb: null };
+  try {
+    const pidFile = app.safe ? path.join(app.runPath, 'proxy.pid') : path.join(app.runPath, 'app.pid');
+    const pid = fs.readFileSync(pidFile, 'utf8').trim();
+    if (pid) {
+      const rss = execFileSync('ps', ['-o', 'rss=', '-p', String(pid)], { encoding: 'utf8', timeout: 2000 }).trim();
+      if (rss) out.rssMb = Math.round(Number(rss) / 1024);
+    }
+  } catch { /* not running — an honest null, never a zero */ }
+  try {
+    const dataDir = path.join(app.runPath, 'data');
+    if (fs.existsSync(dataDir)) {
+      const du = execFileSync('du', ['-sk', dataDir], { encoding: 'utf8', timeout: 3000 }).trim().split(/\s+/)[0];
+      if (du) out.dataBytes = Number(du) * 1024;
+    }
+    const logF = path.join(app.runPath, 'deploy.log');
+    if (fs.existsSync(logF)) out.logBytes = fs.statSync(logF).size;
+  } catch { /* honest nulls */ }
+  const d = diskFacts();
+  out.diskFreeMb = d.diskFreeMb;
+  return out;
+}
+function appendStatsSample(app, entry) {
+  try {
+    const f = statsFileFor(app);
+    fs.appendFileSync(f, JSON.stringify(entry) + '\n');
+    const lines = fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean);
+    if (lines.length > 2000) fs.writeFileSync(f, lines.slice(-2000).join('\n') + '\n');
+  } catch { /* history must never break the plane */ }
+}
+async function sampleStats() {
+  try {
+    for (const [name, app] of Object.entries(gitlive.loadRegistry())) {
+      if (app.mode === 'connect' || !app.runPath) continue;
+      appendStatsSample(app, sampleOneStats(app, name));
+    }
+  } catch { /* registry unavailable — skip a beat */ }
+}
+let statsTimer = null;
+function startStatsSampler() {
+  statsTimer = setInterval(sampleStats, Math.max(30000, STATS_INTERVAL_MS));
+  statsTimer.unref();
+  return statsTimer;
+}
+
+function certRowsForScore() {
+  try { return certsOverview().filter((c) => c.present && typeof c.daysLeft === 'number'); } catch { return []; }
+}
+
+function intelFacts() {
+  return {
+    apps: listAppsForIntel(),
+    integrityOk: integrityFact(),
+    certs: certRowsForScore(),
+    agentRows: intel.timelineFor ? undefined : undefined, // filled inside intelOverview
+    ...diskFacts(),
+    version: gitlive.VERSION,
+  };
+}
+
+function doctorOverview() {
+  return (async () => {
+  const rows = [];
+  const push = (key, status, title, detail, fix) => rows.push({ key, status, title, detail, fix: fix || null });
+  // 1 — the plane binary: one install, one link
+  const doc = gitlive.getDoctorData();
+  if (doc.linked) {
+    if (doc.mismatch) {
+      // no version pinned into the fix: this command must stay true across
+      // releases (it used to name one specific tarball)
+      push('plane', 'fail', 'The gitlive command points at a different install than this control plane', doc.linked + ' → ' + doc.real, { kind: 'command', label: 'point the command at this install', command: 'ln -sf ~/.gitlive-app/bin/gitlive /usr/local/bin/gitlive' });
+    } else {
+      push('plane', 'ok', 'One install, one link — the gitlive command IS this plane', 'v' + doc.version + ' · ' + doc.linked, null);
+    }
+  } else {
+    push('plane', 'fail', 'The gitlive command is not on your PATH', 'the dashboard works, but terminal commands will say "command not found"', { kind: 'command', label: 'link the command', command: 'ln -sf ~/.gitlive-app/bin/gitlive /usr/local/bin/gitlive' });
+  }
+  // 2 — shipped-file integrity
+  try {
+    const ic = gitlive.integrityCheck();
+    if (ic.ok) push('integrity', 'ok', 'All shipped files verify against the signed manifest', ic.fileCount + ' files · manifest v' + ic.version, null);
+    else push('integrity', 'fail', 'Shipped files drifted from the manifest', ic.reason + (ic.changed && ic.changed.length ? ' — changed: ' + ic.changed.slice(0, 3).join(', ') : '') + (ic.missing && ic.missing.length ? ' — missing: ' + ic.missing.slice(0, 3).join(', ') : ''), { kind: 'command', label: 're-verify the manifest', command: 'gitlive doctor --integrity' });
+  } catch (err) {
+    push('integrity', 'fail', 'Integrity check could not run', err.message || String(err), { kind: 'command', label: 'run it from the terminal', command: 'gitlive doctor --integrity' });
+  }
+  // 3 — every registered app's repos and run dirs
+  const reg = gitlive.loadRegistry();
+  const names = Object.keys(reg);
+  if (!names.length) {
+    push('apps', 'warn', 'No apps registered on this machine yet', 'the apps area shows how to push your first one', { kind: 'link', label: 'open apps', target: 'apps' });
+  } else {
+    const broken = (doc.apps || []).filter((a) => !a.ok);
+    if (!broken.length) push('apps', 'ok', 'Every registered app has its repo and run dir intact', names.length + ' app' + (names.length === 1 ? '' : 's'), null);
+    else push('apps', 'warn', 'Some apps lost their repo or run dir', broken.map((b) => b.name).join(', ') + ' — their cards in apps explain what is missing', { kind: 'link', label: 'open apps', target: 'apps' });
+  }
+  // 4 — the daemon supervisor
+  const dm = daemonStatus();
+  if (dm.running) push('daemon', 'ok', 'The supervisor is watching', 'pid ' + dm.pid, null);
+  else if (dm.note === 'crashed') push('daemon', 'warn', 'The supervisor crashed — apps still run, nothing revives them', 'pid file present, process gone', { kind: 'action', label: 'ensure supervisor', action: 'daemon-ensure' });
+  else push('daemon', 'warn', 'The supervisor is not running', 'apps keep running, but nothing restarts them after a crash', { kind: 'action', label: 'ensure supervisor', action: 'daemon-ensure' });
+  // 5 — local names gateway
+  try {
+    const dn = domainsOverview().local;
+    if (dn.on) push('gateway', 'ok', 'Local names gateway is on', 'port ' + (dn.port || '?') + (dn.tlsPort ? ' · https ' + dn.tlsPort : ''), null);
+    else push('gateway', 'warn', 'Local names are off', 'apps still run on their ports, but <app>.gitlive stops answering', { kind: 'action', label: 'names on', action: 'local-on' });
+  } catch (err) {
+    push('gateway', 'warn', 'Local names status unknown', err.message || String(err), null);
+  }
+  // 6 — public IPv6 for the name office
+  let ip = null;
+  try { ip = gitlive.publicIpv6(); } catch { /* no stable public address */ }
+  if (ip) push('ipv6', 'ok', 'A stable public IPv6 address is available for names', ip, null);
+  else push('ipv6', 'warn', 'No stable public IPv6 right now', 'name publish would refuse; the address returns once the interface is back', null);
+  // 7 — zones
+  try {
+    const zones = gitlive.loadZones();
+    const zn = Object.keys(zones);
+    if (!zn.length) push('zones', 'warn', 'No zones registered yet', 'a zone + a DNS token makes every new app globally reachable from its first push', { kind: 'link', label: 'open naming', target: 'machine:settings' });
+    else {
+      const withToken = zn.filter((z) => zones[z] && zones[z].dnsToken).length;
+      push('zones', withToken === zn.length ? 'ok' : 'warn', (withToken === zn.length ? 'Every zone is ready to publish names' : 'Some zones lack their DNS token'), zn.length + ' zone' + (zn.length === 1 ? '' : 's') + ' · ' + withToken + ' with token', { kind: 'link', label: 'open naming', target: 'machine:settings' });
+    }
+  } catch (err) {
+    push('zones', 'warn', 'Zones could not be read', err.message || String(err), null);
+  }
+  // 8 — backups: a backup that was never verified is a wish. The plane's own
+  // state rides the same list but is NOT an app: it has no restore drill, so
+  // counting it as one would make this row lie.
+  try {
+    const bu = backupsOverview();
+    const appRows = bu.apps.filter((a) => !a.state);
+    const stateRow = bu.apps.find((a) => a.state);
+    const withSnap = appRows.filter((a) => a.snapshots > 0);
+    const verified = withSnap.filter((a) => a.verified);
+    const stateNote = stateRow ? ' · control-plane state backed up ✓ (secrets excluded)' : ' · control-plane state: none yet';
+    if (!withSnap.length && !stateRow) push('backups', 'warn', 'Nothing is backed up yet', 'an app\'s data is only safe once a snapshot exists — run one now', { kind: 'link', label: 'open backups', target: 'machine:settings' });
+    else if (!withSnap.length) push('backups', 'warn', 'Only the control plane is backed up', 'no app has a snapshot yet' + stateNote, { kind: 'link', label: 'open backups', target: 'machine:settings' });
+    else if (verified.length === withSnap.length) push('backups', 'ok', 'Every app is backed up and restore-verified', withSnap.length + ' app' + (withSnap.length === 1 ? '' : 's') + ' · drills pass' + stateNote, null);
+    else push('backups', 'warn', 'Backed up, but not restore-verified', verified.length + ' of ' + withSnap.length + ' app' + (withSnap.length === 1 ? '' : 's') + ' drilled — a backup that cannot be restored is a wish' + stateNote, { kind: 'link', label: 'open backups', target: 'machine:settings' });
+  } catch (err) {
+    push('backups', 'warn', 'Backup state unknown', err.message || String(err), null);
+  }
+  // 8b — certificates: expiry must never be a browser-warning surprise
+  try {
+    const cs = certsOverview().certs;
+    const bad = cs.filter((c) => c.status !== 'ok');
+    if (!cs.length) push('certs', 'skip', 'No certificates held yet', 'the local gateway cert issues on demand; wildcard certs appear once a zone has its token', null);
+    else if (!bad.length) push('certs', 'ok', 'Every certificate is current', cs.length + ' cert' + (cs.length === 1 ? '' : 's') + ' · no expiry inside 14 days', null);
+    else push('certs', 'warn', 'Certificates need attention', bad.map((c) => (c.present === false ? c.domain + ' missing' : c.domain + ' · ' + (c.daysLeft === null ? 'unparsable' : (c.daysLeft < 0 ? 'EXPIRED' : c.daysLeft + 'd left')))).join(', '), { kind: 'link', label: 'open naming', target: 'machine:settings' });
+  } catch (err) {
+    push('certs', 'warn', 'Certificate state unknown', err.message || String(err), null);
+  }
+  // 9 — is there a newer gitlive on npm? (semver-honest: never "update" DOWN)
+  const latest = await npmLatestVersion();
+  if (latest && semverGt(latest, gitlive.VERSION)) {
+    push('update', 'warn', 'A newer gitlive is published', 'npm has ' + latest + ', this node runs ' + gitlive.VERSION + ' — the update flow backs up first, shows the changes, and refuses without a backup', { kind: 'action', label: 'update gitlive →', action: 'open-update' });
+  } else if (latest && latest === gitlive.VERSION) {
+    push('update', 'ok', 'This node runs the newest published gitlive', 'v' + gitlive.VERSION, null);
+  } else if (latest && semverGt(gitlive.VERSION, latest)) {
+    push('update', 'ok', 'This node is AHEAD of the npm registry', 'node ' + gitlive.VERSION + ' · registry ' + latest + ' (unpublished build — that is fine on this machine)', null);
+  } else {
+    push('update', 'skip', 'npm lookup did not answer', 'offline is fine — the node keeps working; the row returns when the registry answers', null);
+  }
+  return { checkedAt: new Date().toISOString(), rows };
+  })();
+}
+
 function peersOverview() {
   try {
     const peer = require('../peer.js');
@@ -438,6 +963,8 @@ function domainsOverview() {
       trustCommand: (fs.existsSync(tls.caCrt) && os.platform() === 'darwin') ? gitlive.trustCommand() : null,
     },
     zones: Object.entries(zones).map(([domain, z]) => ({ domain, addedAt: z.addedAt || null, hasToken: Boolean(z.dnsToken) })),
+    // the machine's stable public address — the target every AAAA write uses
+    ipv6: (() => { try { return gitlive.publicIpv6(); } catch { return null; } })(),
     apps: Object.entries(reg).map(([name, app]) => ({
       name,
       domains: Array.isArray(app.domains) ? app.domains : [],
@@ -606,7 +1133,20 @@ function sampleOneHealth(app, name) {
 function appendHealthSample(app, entry) {
   try {
     const f = healthFileFor(app);
-    fs.appendFileSync(f, JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n');
+    const row = { at: new Date().toISOString(), ...entry };
+    // previous sample, read BEFORE the append: the daily roll-up needs the
+    // interval it covers to tell up-time from down-time from unknown-time
+    let prev = null;
+    try {
+      const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+      if (lines.length) prev = JSON.parse(lines[lines.length - 1]);
+    } catch { /* first sample of a fresh file */ }
+    fs.appendFileSync(f, JSON.stringify(row) + '\n');
+    if (prev && prev.at) {
+      try {
+        intel.recordSampleInRollup(app.name || entry.app, { at: new Date(prev.at).getTime(), up: prev.up === true }, { at: new Date(row.at).getTime(), up: row.up === true }, { step: HEALTH_INTERVAL_MS });
+      } catch { /* the roll-up is an optimisation, never a requirement */ }
+    }
     const lines = fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean);
     const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
     const kept = lines.slice(-5000).filter((l) => {
@@ -625,11 +1165,13 @@ async function sampleHealth() {
     }
   } catch { /* registry unavailable — skip a beat */ }
 }
+let healthTimer = null; // module-scoped so shutdown can clear it
+let agentCaps = null;   // capabilities handed to control/agents.js at boot
 function startHealthSampler() {
-  const timer = setInterval(sampleHealth, Math.max(1000, HEALTH_INTERVAL_MS));
-  timer.unref(); // the sampler must never hold the process open
+  healthTimer = setInterval(sampleHealth, Math.max(1000, HEALTH_INTERVAL_MS));
+  healthTimer.unref(); // the sampler must never hold the process open
   sampleHealth();
-  return timer;
+  return healthTimer;
 }
 function healthHistoryData(appName) {
   const gitliveMod = gitlive;
@@ -759,6 +1301,30 @@ function datamapTables(dbPath) {
   } catch { return null; } finally { if (db) try { db.close(); } catch { /* noop */ } }
   return out;
 }
+
+// Expired dashboard sessions are only removed when that exact token is
+// presented again (gitlive-client's verifySession does the same on a hit), so
+// a machine that has been up for months keeps collecting dead rows — the live
+// plane had 23 of them, three long expired. Pruning is bounded, cheap and
+// receipted: one DELETE by expiry, at boot and on the maintenance tick.
+function pruneSessions(why) {
+  if (!DatabaseSync) return { pruned: 0, skipped: 'sqlite unavailable on this node' };
+  const dbPath = path.join(CONTROL_ROOT, 'app.db');
+  if (!fs.existsSync(dbPath)) return { pruned: 0, skipped: 'no session database yet' };
+  let db = null;
+  try {
+    db = new DatabaseSync(dbPath);
+    const before = db.prepare('SELECT COUNT(*) AS c FROM _gitlive_sessions').get().c;
+    const gone = db.prepare('DELETE FROM _gitlive_sessions WHERE expires_at IS NOT NULL AND expires_at < ?').run(new Date().toISOString()).changes;
+    const after = db.prepare('SELECT COUNT(*) AS c FROM _gitlive_sessions').get().c;
+    if (gone) {
+      try { require('../crypt.js').logEvent('sessions-pruned', { why, pruned: gone, remaining: after }); } catch { /* audit best-effort */ }
+    }
+    return { pruned: gone, remaining: after, before };
+  } catch (err) {
+    return { pruned: 0, error: err.message };
+  } finally { if (db) try { db.close(); } catch { /* noop */ } }
+}
 function datamapFor(appName) {
   const reg = gitlive.loadRegistry();
   const app = reg[appName];
@@ -852,6 +1418,153 @@ function freePortAsync() {
     srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); });
   });
 }
+
+// ── create an app from the dashboard ────────────────────────────────────
+// Registering a project folder used to be the ONE thing that still needed a
+// terminal. These two helpers close that gap WITHOUT a second implementation:
+// the browser runs the same `gitlive init` the CLI runs (same flags, same
+// hooks, same registry entry, same output) with cwd set to the chosen folder,
+// and the process output is handed back verbatim so the receipt is the real
+// receipt. The folder picker is a plain read-only directory listing — the
+// plane already owns this machine; it never writes anything while browsing.
+const APP_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/;
+const BROWSE_SKIP = new Set(['node_modules', '.git', '.cache', '.Trash', 'Library']);
+// hidden folders are the machine's business, not the owner's project list: the
+// picker skips every dot-folder plus the noisy build/dependency dirs
+function browseHidden(name) { return String(name).startsWith('.') || BROWSE_SKIP.has(name); }
+
+function expandHome(p) {
+  const s = String(p || '').trim();
+  if (s === '~') return os.homedir();
+  if (s.startsWith('~/')) return path.join(os.homedir(), s.slice(2));
+  return s;
+}
+
+// macOS resolves /tmp → /private/tmp: the child `gitlive init` records
+// process.cwd() (already physical), so the plane must compare like with like
+// or a folder would look unregistered the moment it is registered.
+function realDir(p) {
+  try { return fs.realpathSync(p); } catch { return p; }
+}
+
+function appNameTaken(name) {
+  try { return Boolean(gitlive.loadRegistry()[name]); } catch { return false; }
+}
+
+// directories only, plus what gitlive can tell about each one BEFORE the
+// owner commits to it (is it a git repo already? what stack is in there?)
+function browseData(rawPath) {
+  const target = realDir(path.resolve(expandHome(rawPath) || os.homedir()));
+  let st;
+  try { st = fs.statSync(target); } catch { throw Object.assign(new Error(`no such folder: ${target}`), { code: 'INVALID_ARGS' }); }
+  if (!st.isDirectory()) throw Object.assign(new Error(`${target} is a file, not a folder`), { code: 'INVALID_ARGS' });
+  if (target === realDir(gitlive.HOME_DIR) || target.startsWith(realDir(gitlive.HOME_DIR) + path.sep)) {
+    throw Object.assign(new Error('that is gitlive\'s own working folder — pick the folder your project code lives in'), { code: 'INVALID_ARGS' });
+  }
+  let entries = [];
+  try { entries = fs.readdirSync(target, { withFileTypes: true }); }
+  catch (err) { throw Object.assign(new Error(`cannot read ${target}: ${err.message}`), { code: 'INVALID_ARGS' }); }
+  const dirs = entries
+    .filter((e) => {
+      if (!e.isDirectory() && !(e.isSymbolicLink() && (() => { try { return fs.statSync(path.join(target, e.name)).isDirectory(); } catch { return false; } })())) return false;
+      return !browseHidden(e.name);
+    })
+    .map((e) => {
+      const full = path.join(target, e.name);
+      let kind = 'unknown';
+      try { kind = gitlive.detectStack(full).kind; } catch { /* unreadable → unknown */ }
+      return { name: e.name, path: full, kind, git: fs.existsSync(path.join(full, '.git')) };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  const here = gitlive.detectStack(target);
+  return {
+    path: target,
+    parent: path.dirname(target) === target ? null : path.dirname(target),
+    home: os.homedir(),
+    dirs,
+    here: {
+      kind: here.kind,
+      installCmd: here.installCmd || '',
+      startCmd: here.startCmd || '',
+      docker: here.docker || null,
+      git: fs.existsSync(path.join(target, '.git')),
+      name: path.basename(target).replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 63),
+      registered: appNameTaken(path.basename(target)),
+    },
+  };
+}
+
+function createAppData(body) {
+  const b = body || {};
+  const name = String(b.name || '').trim();
+  if (!APP_NAME_RE.test(name)) {
+    throw Object.assign(new Error('app name: letters, digits, dot, dash or underscore (max 63 chars, must not start with a dot)'), { code: 'INVALID_ARGS' });
+  }
+  if (!String(b.dir || '').trim()) throw Object.assign(new Error('choose the folder your project lives in'), { code: 'INVALID_ARGS' });
+  const dir = realDir(path.resolve(expandHome(b.dir)));
+  let st;
+  try { st = fs.statSync(dir); } catch { throw Object.assign(new Error(`no such folder: ${dir}`), { code: 'INVALID_ARGS' }); }
+  if (!st.isDirectory()) throw Object.assign(new Error(`${dir} is a file, not a folder`), { code: 'INVALID_ARGS' });
+  if (dir === realDir(gitlive.HOME_DIR) || dir.startsWith(realDir(gitlive.HOME_DIR) + path.sep)) {
+    throw Object.assign(new Error('that is gitlive\'s own working folder — pick the folder your project code lives in'), { code: 'INVALID_ARGS' });
+  }
+  if (appNameTaken(name) && !b.reconfigure) {
+    throw Object.assign(new Error(`"${name}" is already registered on this machine — pass reconfigure to point it at a new folder`), { code: 'CONFLICT' });
+  }
+  const detected = gitlive.detectStack(dir);
+  const dockerMode = b.docker ? (detected.docker || 'dockerfile') : detected.docker;
+  const start = String(b.start || '').trim();
+  if (!start && !dockerMode) {
+    throw Object.assign(new Error('a start command is required (e.g. "npm start") — gitlive runs it on every deploy'), { code: 'INVALID_ARGS' });
+  }
+  const port = b.port === undefined || b.port === null ? '' : String(b.port).trim();
+  if (port && !/^\d{1,5}$/.test(port)) throw Object.assign(new Error('port must be a number (1-65535)'), { code: 'INVALID_ARGS' });
+  if (port && (Number(port) < 1 || Number(port) > 65535)) throw Object.assign(new Error('port must be between 1 and 65535'), { code: 'INVALID_ARGS' });
+  if (b.safe && !port) throw Object.assign(new Error('safe (blue-green) mode needs the public port — it starts each release on an internal port and swaps'), { code: 'INVALID_ARGS' });
+  if (port && !b.safe) {
+    const clash = gitlive.registryPortConflict(gitlive.loadRegistry(), Number(port), name);
+    if (clash) throw Object.assign(new Error(`port ${port} already belongs to "${clash}" on this machine — pick another port`), { code: 'CONFLICT' });
+  }
+
+  const gitliveFile = path.join(__dirname, '..', 'gitlive.js');
+  const args = [gitliveFile, 'init', name, '--yes', '--install', String(b.install === undefined ? (detected.installCmd || '') : b.install).trim()];
+  if (start) args.push('--start', start);
+  if (b.build !== undefined && String(b.build).trim()) args.push('--build', String(b.build).trim());
+  if (port) args.push('--port', port);
+  if (b.safe) args.push('--safe');
+  if (b.health !== undefined && String(b.health).trim()) args.push('--health', String(b.health).trim());
+  if (b.docker) args.push('--docker');
+
+  // spawnSync (not the fire-and-forget job path): init is a local, bounded
+  // operation — it writes a bare repo, a hook and one registry row. The owner
+  // is watching the form, so the answer must arrive in the same breath, and
+  // the output IS the receipt shown on screen.
+  const r = spawnSync(process.execPath, args, { cwd: dir, encoding: 'utf8', timeout: 120000, env: process.env });
+  const log = `${r.stdout || ''}${r.stderr || ''}`.trim();
+  if (r.error) throw Object.assign(new Error(`could not run gitlive init: ${r.error.message}`), { code: 'INTERNAL', details: { log } });
+  if (r.status !== 0) {
+    const lastLine = log.split('\n').filter(Boolean).pop() || `gitlive init exited ${r.status}`;
+    throw Object.assign(new Error(lastLine), { code: 'INIT_FAILED', details: { log, dir, argv: args.slice(2).join(' ') } });
+  }
+  const reg = gitlive.loadRegistry();
+  const app = reg[name] || null;
+  try { require('../crypt.js').logEvent('app-created', { app: name, dir, mode: app && app.safe ? 'safe' : (app && app.docker) || 'plain' }); } catch { /* audit best-effort */ }
+  return {
+    ok: true,
+    name,
+    dir,
+    mode: app && app.safe ? 'safe (blue-green)' : (app && app.docker) || 'plain',
+    safe: Boolean(app && app.safe),
+    port: app && app.port ? app.port : null,
+    gatewayUrl: app && app.safe && app.port ? `http://127.0.0.1:${app.port}` : null,
+    log,
+    next: [`git push ${name} main`],
+    // the browser has no terminal, so the copy-paste line is generated here
+    // from the folder that was actually registered — never a guess
+    pushHint: `cd ${JSON.stringify(dir)} && git add -A && git commit -m "first push" && git push ${name} main`,
+    registered: Boolean(app),
+  };
+}
 function sh(cmd, args, opts = {}) {
   // stdio 'ignore' on purpose: piped stdio makes execFileSync wait for EOF
   // on the pipes, and a deploy hook's detached app/proxy can hold them open
@@ -859,6 +1572,79 @@ function sh(cmd, args, opts = {}) {
   // (field finding: the sandbox flow wedged the control plane exactly this
   // way). Server-side calls never need the captured output.
   return execFileSync(cmd, args, { encoding: 'utf8', stdio: 'ignore', ...opts });
+}
+// fire-and-forget for long jobs (backups, entry) — never blocks the plane.
+// Every spawn writes a ledger line (started) and a wrapper watches the child
+// so the dashboard can show "running… / done ✓ / failed" instead of silence.
+function jobsFile() { return path.join(os.homedir(), '.gitlive', 'jobs.jsonl'); }
+function jobsTail() {
+  try {
+    const f = jobsFile();
+    if (!fs.existsSync(f)) return { jobs: [] };
+    const lines = fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean);
+    const byId = new Map();
+    for (const l of lines) {
+      let r = null;
+      try { r = JSON.parse(l); } catch { /* skip malformed */ }
+      if (!r || !r.id) continue;
+      const cur = byId.get(r.id) || {};
+      Object.assign(cur, r);
+      byId.set(r.id, cur);
+    }
+    return { jobs: [...byId.values()].slice(-12).reverse() };
+  } catch {
+    return { jobs: [] };
+  }
+}
+function spawnDetached(cmd, args, kind, label) {
+  const id = crypto.randomBytes(5).toString('hex');
+  const entry = { id, kind: kind || 'job', label: label || (args[args.length - 1] || 'job'), startedAt: new Date().toISOString(), endedAt: null, ok: null };
+  try {
+    fs.mkdirSync(path.dirname(jobsFile()), { recursive: true });
+    fs.appendFileSync(jobsFile(), JSON.stringify(entry) + '\n');
+  } catch { /* the ledger must never block the job */ }
+  const wrapper = `
+    const {spawn} = require('node:child_process');
+    const fs = require('node:fs');
+    const spec = JSON.parse(process.argv[1]);
+    const child = spawn(spec[0], spec[1], {stdio:'ignore', detached:true});
+    child.on('exit', (code) => {
+      try {
+        fs.appendFileSync(${JSON.stringify(jobsFile())}, JSON.stringify({id:${JSON.stringify(id)}, endedAt:new Date().toISOString(), ok: code === 0}) + '\\n');
+      } catch { /* ledger best-effort */ }
+      process.exit(0);
+    });
+  `;
+  const w = require('node:child_process').spawn('node', ['-e', wrapper, JSON.stringify([cmd, args])], { detached: true, stdio: 'ignore', env: process.env });
+  w.unref();
+  return id;
+}
+// backup facts per app from its own receipt file — nothing is invented
+function backupsOverview() {
+  const reg = gitlive.loadRegistry();
+  const apps = [];
+  // the plane's own state is machinery: it belongs in this list, and its
+  // receipt says out loud which secrets were deliberately excluded
+  try {
+    const f = path.join(os.homedir(), '.gitlive', 'control', 'backup-history.jsonl');
+    if (fs.existsSync(f)) {
+      const recs = fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean)
+        .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+      const latest = recs[recs.length - 1] || null;
+      apps.push({ name: 'control-plane', snapshots: recs.length, latest, verified: recs.some((r) => r.outcome === 'verified' || r.verified === true), state: true });
+    }
+  } catch { /* state receipts optional */ }
+  for (const [name, app] of Object.entries(reg)) {
+    if (!app.runPath) continue;
+    const f = path.join(app.runPath, 'backup-history.jsonl');
+    if (!fs.existsSync(f)) { apps.push({ name, snapshots: 0, latest: null, verified: false }); continue; }
+    const lines = fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean);
+    const recs = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const latest = recs[recs.length - 1] || null;
+    const verified = recs.some((r) => r.outcome === 'verified' || r.verified === true);
+    apps.push({ name, snapshots: recs.length, latest, verified });
+  }
+  return { apps };
 }
 function sandboxProjectGit(args) { return sh('git', args, { cwd: sandboxProject(), env: process.env }); }
 function sandboxCommit(msg) {
@@ -971,6 +1757,72 @@ function sandboxSweep() {
 // ---------------------------------------------------------------------------
 const loginAttempts = new Map(); // email -> { fails, until } (in-memory, per-process)
 
+// A plane bound to anything other than loopback carries session tokens in
+// cleartext over the network. gitlive ships no TLS terminator of its own for
+// the control plane, so binding wide is allowed ONLY with an explicit opt-in
+// and a loud, honest warning on every boot (the operator may have a reverse
+// proxy doing TLS; we cannot know, so we say what we know).
+function nonLoopbackWarning(host) {
+  const loopback = !host || host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  if (loopback) return null;
+  if (process.env.GITLIVE_ALLOW_NON_LOOPBACK === '1') {
+    return `control plane bound to ${host} (GITLIVE_ALLOW_NON_LOOPBACK=1) — your session token crosses the network in cleartext unless something in front of this terminates TLS`;
+  }
+  return `refusing to bind ${host}: the control plane speaks plain HTTP, so sessions and keys would cross the network in the clear. `
+    + `Put a TLS reverse proxy in front and set GITLIVE_ALLOW_NON_LOOPBACK=1, or keep it on 127.0.0.1.`;
+}
+
+// serve.log has no rotation (the boot agent appends forever). Trim it at
+// startup — a machine that runs for months must not fill its disk with logs.
+function rotateServeLog() {
+  try {
+    const f = path.join(os.homedir(), '.gitlive', 'control', 'serve.log');
+    if (!fs.existsSync(f)) return;
+    const max = Number(process.env.GITLIVE_SERVE_LOG_MAX_MB || 5) * 1024 * 1024;
+    if (fs.statSync(f).size > max) {
+      const buf = fs.readFileSync(f);
+      fs.writeFileSync(f, buf.slice(Math.floor(buf.length / 2)));
+    }
+  } catch { /* rotation must never block a boot */ }
+}
+
+// ── automatic maintenance: backups that need a human are backups that stop ──
+// The plane already has a ticker (scheduled tasks). This is the machine's OWN
+// cadence: a state snapshot every 24h and a restic check every 7 days, both
+// receipted the same way a manual run is. Off by default in tests, on by
+// default on a real plane (GITLIVE_MAINTENANCE=0 disables it).
+const MAINT_STATE_HOURS = Number(process.env.GITLIVE_MAINT_STATE_HOURS || 24);
+const MAINT_CHECK_HOURS = Number(process.env.GITLIVE_MAINT_CHECK_HOURS || 24 * 7);
+function lastReceiptAt(file) {
+  try {
+    const rows = fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
+    const last = JSON.parse(rows[rows.length - 1]);
+    return last.at ? new Date(last.at).getTime() : 0;
+  } catch { return 0; }
+}
+function maintenanceDue() {
+  const stateHist = path.join(os.homedir(), '.gitlive', 'control', 'backup-history.jsonl');
+  const checkStamp = path.join(os.homedir(), '.gitlive', 'control', 'last-check.json');
+  const now = Date.now();
+  const stateDue = now - lastReceiptAt(stateHist) > MAINT_STATE_HOURS * 3600 * 1000;
+  let checkDue = true;
+  try { checkDue = now - new Date(JSON.parse(fs.readFileSync(checkStamp, 'utf8')).at).getTime() > MAINT_CHECK_HOURS * 3600 * 1000; } catch { /* never checked */ }
+  return { stateDue, checkDue, checkStamp };
+}
+function runMaintenance() {
+  if (String(process.env.GITLIVE_MAINTENANCE || '1') === '0') return;
+  try {
+    const gitliveJs = path.join(__dirname, '..', 'gitlive.js');
+    const { stateDue, checkDue, checkStamp } = maintenanceDue();
+    if (stateDue) spawnDetached('node', [gitliveJs, 'backup', 'state'], 'backup', 'maintenance: control-plane state');
+    if (checkDue) {
+      spawnDetached('node', [gitliveJs, 'backup', 'check'], 'check', 'maintenance: restic check');
+      try { fs.writeFileSync(checkStamp, JSON.stringify({ at: new Date().toISOString(), by: 'maintenance' })); } catch { /* best effort */ }
+    }
+    if (stateDue || checkDue) accessLog(`${new Date().toISOString()} maintenance ${stateDue ? 'state-snapshot ' : ''}${checkDue ? 'restic-check' : ''}`.trim());
+  } catch { /* maintenance must never break the plane */ }
+}
+
 async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegister = false } = {}) {
   fs.mkdirSync(CONTROL_ROOT, { recursive: true });
 
@@ -1052,6 +1904,36 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
   }
 
   const server = http.createServer(async (req, res) => {
+    // identity + timing for every request; the id travels back in a header
+    // so a failure the owner reports can be found in the access log
+    const rid = newRequestId();
+    const t0 = Date.now();
+    const reqPath = String(req.url || '').split('?')[0];
+    try { res.setHeader('x-request-id', rid); } catch { /* headers sent */ }
+    try {
+      // the dashboard is a single same-origin document with inline scripts and
+      // styles: no third-party anything, no framing, no referrer, no ambient
+      // permissions. `frame-ancestors 'none'` also kills clickjacking.
+      res.setHeader('content-security-policy', [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+        "base-uri 'none'",
+        "object-src 'none'",
+      ].join('; '));
+      res.setHeader('x-frame-options', 'DENY');
+      res.setHeader('cross-origin-opener-policy', 'same-origin');
+      res.setHeader('cross-origin-resource-policy', 'same-origin');
+      res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+    } catch { /* headers already sent — the request is still served */ }
+    res.on('finish', () => {
+      accessLog(`${new Date().toISOString()} ${rid} ${req.method} ${reqPath} → ${res.statusCode} ${Date.now() - t0}ms`);
+    });
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const p = url.pathname;
     try {
@@ -1187,6 +2069,15 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
           try { require('../crypt.js').logEvent('github-hook-denied', { app: appName }); } catch { /* noop */ }
           return fail(res, 403, 'AUTH_ERROR', 'bad webhook signature — the secret must match (gitlive github hook <app> --secret <s>)');
         }
+        // REPLAY GUARD: a valid signature only proves GitHub sent this body
+        // ONCE — anyone who captured the request could send it again and
+        // redeploy on demand. GitHub's delivery id is unique per event, so a
+        // seen id is refused; a bounded ledger keeps this cheap and honest.
+        const delivery = String(req.headers['x-github-delivery'] || '');
+        if (delivery && replaySeen(delivery)) {
+          try { require('../crypt.js').logEvent('github-hook-replay', { app: appName, delivery }); } catch { /* noop */ }
+          return fail(res, 409, 'CONFLICT', 'this delivery was already processed — replays are refused (delivery ' + delivery.slice(0, 12) + ')');
+        }
         let payload = null;
         try { payload = JSON.parse(raw.toString('utf8')); } catch { return fail(res, 400, 'INVALID_ARGS', 'invalid JSON payload'); }
         const commit = payload && payload.head_commit && payload.head_commit.id;
@@ -1194,6 +2085,15 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
         if (!commit || ref !== 'refs/heads/main') return fail(res, 400, 'INVALID_ARGS', 'only pushes to main deploy (the webhook should fire on the push event)');
         try { return ok(res, await githubHookDeploy(appName, commit)); }
         catch (err) { return fail(res, err.code === 'NOT_FOUND' ? 404 : 500, err.code || 'INTERNAL', err.message || String(err)); }
+      }
+
+      // ── liveness, UNAUTHENTICATED on purpose ───────────────────────────
+      // supervision (the boot agent, an external watcher, a phone) needs to
+      // know the plane is alive without holding a session. It answers with
+      // status only — no node handle, no keys, no app names.
+      if (reqPath === '/health' && req.method === 'GET') {
+        res.setHeader('content-type', 'application/json');
+        return res.end(JSON.stringify({ ok: true, version: gitlive.VERSION, uptime: Math.round(process.uptime()) }));
       }
 
       // ── everything below requires a user session ────────────────────────
@@ -1220,7 +2120,12 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
       }
 
       // ── apps (local executor) ───────────────────────────────────────────
-      const appsMatch = p.match(/^\/api\/apps\/([^/]+)\/(logs|stop|deploy|rollback|restart|replicas|conflicts)$/);
+      // NOTE: this alternation is the route table for app actions — a segment
+      // missing here is a button that 404s. tests/contract.test.js now derives
+      // the segments from every dashboard api.call (including paths built by
+      // string concatenation), so a mismatch fails the battery instead of the
+      // owner discovering a dead button.
+      const appsMatch = p.match(/^\/api\/apps\/([^/]+)\/(logs|stop|deploy|rollback|restart|replicas|conflicts|diagnose|secrets|env|stats|schedule|rm|restore|graduate|reliability)$/);
       const nameMatch = p.match(/^\/api\/apps\/([^/]+)\/name$/);
       const publicMatch = p.match(/^\/api\/apps\/([^/]+)\/public$/);
       if (publicMatch && req.method === 'POST') {
@@ -1255,6 +2160,13 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
       // ── ops views (redesign round) ─────────────────────────────────────
       if (p === '/api/peers' && req.method === 'GET') return ok(res, peersOverview());
       if (p === '/api/events' && req.method === 'GET') return ok(res, eventsTail());
+      if (p === '/api/doctor' && req.method === 'GET') {
+        // the dashboard's self-checkup: the same facts the CLI's `doctor`
+        // proves, plus the live machine checks the cockpit needs — rendered
+        // as a fixable list, never a wall of text.
+        try { return ok(res, await doctorOverview()); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
       if (p === '/api/daemon' && req.method === 'GET') return ok(res, daemonStatus());
       if (p === '/api/daemon' && req.method === 'POST') {
         try {
@@ -1265,6 +2177,240 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
         }
       }
       if (p === '/api/entry' && req.method === 'GET') return ok(res, entryStatus());
+      if (p === '/api/entry/action' && req.method === 'POST') {
+        // entry serve / connect / disconnect / stop — the SAME CLI the
+        // owner's terminal runs, spawned by the plane (the CLI detaches its
+        // long-lived server/client and returns immediately).
+        try {
+          const body = await readBody(req);
+          const action = String(body && body.action || '');
+          const gitliveJs = path.join(__dirname, '..', 'gitlive.js');
+          const args = [gitliveJs, 'entry'];
+          if (action === 'serve') {
+            args.push('serve');
+            if (body.port) args.push('--port', String(body.port));
+          } else if (action === 'connect') {
+            if (!body.url || !body.token) return fail(res, 400, 'INVALID_ARGS', 'connect needs url and token');
+            args.push('connect', String(body.url), '--token', String(body.token));
+          } else if (action === 'disconnect') {
+            args.push('disconnect');
+          } else if (action === 'stop') {
+            args.push('stop');
+          } else {
+            return fail(res, 400, 'INVALID_ARGS', 'action must be serve | connect | disconnect | stop');
+          }
+          sh('node', args, { env: process.env });
+          await new Promise((r) => setTimeout(r, 600));
+          return ok(res, entryStatus());
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/entry/cert' && req.method === 'POST') {
+        // https for a name on THIS machine — same validation as the CLI's
+        // entry cert, never a second implementation
+        try {
+          const body = await readBody(req);
+          const domain = String(body && body.domain || '').toLowerCase();
+          if (!domain || !body.cert || !body.key) return fail(res, 400, 'INVALID_ARGS', 'cert needs domain + cert file path + key file path');
+          const installed = gitlive.installPublicCert(domain, String(body.cert), String(body.key));
+          return ok(res, { ok: true, domain, ...installed });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/peers/announce' && req.method === 'POST') {
+        // announce this machine to a peer, from the cockpit
+        try {
+          const body = await readBody(req);
+          const peerUrl = String(body && body.url || '');
+          const myUrl = String(body && body.myUrl || peerUrl);
+          if (!peerUrl) return fail(res, 400, 'INVALID_ARGS', 'the peer url is required — the machine you want to see you');
+          const peer = require('../peer.js');
+          const meta = nodeIdentity();
+          const r = await peer.peerAnnounce(peerUrl, { name: (meta && meta.handle) || 'self', endpoints: [myUrl] });
+          return ok(res, { ok: true, announced: peerUrl, received: r });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/backups' && req.method === 'GET') {
+        try { return ok(res, backupsOverview()); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
+      if (p === '/api/agents' && req.method === 'GET') {
+        try { return ok(res, require('./agents.js').status()); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
+      if (p === '/api/agents/run' && req.method === 'POST') {
+        // run one pass on demand — the same pass the ticker runs
+        try {
+          const body = await readBody(req);
+          const agents = require('./agents.js');
+          const which = String(body && body.agent || 'all');
+          let result = null;
+          if (which === 'improve') result = agents.improvePass(agentCaps || {});
+          else if (which === 'repair') result = { actions: agents.repairPass(agentCaps || {}) };
+          else if (which === 'diagnose') result = { actions: await agents.diagnosePass(agentCaps || {}) };
+          else result = await agents.tick(agentCaps || {});
+          return ok(res, { ran: which, result, status: agents.status() });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/jobs' && req.method === 'GET') {
+        try { return ok(res, jobsTail()); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
+      if (p === '/api/support' && req.method === 'GET') {
+        // one-click support bundle: every fact a helper would ask for, in one
+        // copy — machine state, never secrets (no tokens, no key material).
+        //
+        // IDENTIFIERS ARE MASKED BY DEFAULT (v4.0.1): this artifact exists to
+        // be handed to somebody else, and the unmasked version used to carry
+        // the owner's home path, a private project folder name, the machine's
+        // public IPv6 and every app name. `?full=1` returns the unmasked one
+        // for the owner's own use, and the bundle says which it is.
+        const full = new URL(req.url, 'http://x').searchParams.get('full') === '1';
+        try {
+          const bundle = {
+            checkedAt: new Date().toISOString(),
+            version: gitlive.VERSION,
+            doctor: doctorOverview().rows,
+            apps: gitlive.listAppsData(),
+            jobs: jobsTail().jobs.slice(0, 8),
+            events: eventsTail().entries.slice(-20),
+            backups: backupsOverview(),
+            boot: (() => {
+              try { const p2 = path.join(os.homedir(), 'Library', 'LaunchAgents', 'dev.gitlive.control.plist'); return { installed: fs.existsSync(p2) }; }
+              catch { return { installed: null }; }
+            })(),
+            zones: (() => { try { const z = gitlive.loadZones(); return Object.keys(z).map((k) => ({ domain: k, hasToken: Boolean(z[k] && z[k].dnsToken) })); } catch { return []; } })(),
+            ipv6: (() => { try { return gitlive.publicIpv6(); } catch { return null; } })(),
+          };
+          if (full) return ok(res, { ...bundle, redacted: false, note: 'unmasked — contains paths, addresses and names; do not post this publicly' });
+          const redact = require('./redact.js');
+          const names = knownAppNames();
+          const domains = (() => { try { return Object.keys(gitlive.loadZones()); } catch { return []; } })();
+          return ok(res, {
+            ...redact.shareableDeep(bundle, { names, maskDomains: domains, home: os.homedir() }),
+            redacted: true,
+            note: 'identifiers masked (paths → ~, addresses → <address>, names → app-N) so this can be shared safely; the full version is one request away and is for your own eyes only',
+          });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/self/version' && req.method === 'GET') {
+        // the update flow's front door: installed vs registry + the changes
+        try {
+          const latest = await npmLatestVersion();
+          let changelog = '';
+          try {
+            changelog = fs.readFileSync(path.join(__dirname, '..', 'CHANGELOG.md'), 'utf8').slice(0, 1600);
+          } catch { /* changelog optional */ }
+          return ok(res, { installed: gitlive.VERSION, latest, newer: Boolean(latest && semverGt(latest, gitlive.VERSION)), changelog, offline: !outboundAllowed() });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/self/update' && req.method === 'POST') {
+        // the full update: refuse without a backup; refuse without a newer
+        // version; then npm-install + restart the plane (the boot agent
+        // revives it; the fallback restart covers machines without one).
+        try {
+          const latest = await npmLatestVersion();
+          if (!latest || !semverGt(latest, gitlive.VERSION)) {
+            return fail(res, 409, 'CONFLICT', 'nothing newer to update to — npm has ' + (latest || 'no answer') + ', this node runs ' + gitlive.VERSION);
+          }
+          const bu = backupsOverview();
+          const withSnap = bu.apps.filter((a) => a.snapshots > 0).length;
+          if (!withSnap) {
+            return fail(res, 409, 'CONFLICT', 'back up first — the update refuses to run without at least one snapshot (operations → back up everything now)');
+          }
+          const bin = path.join(os.homedir(), '.gitlive-app', 'bin', 'gitlive');
+          const script = `npm install -g --prefix ~/.gitlive-app gitlive@${latest} --force && sleep 1 && (lsof -ti tcp:5180 | xargs kill 2>/dev/null || true) && sleep 1 && (nohup ${bin} serve --no-open >> ~/.gitlive/control/serve.log 2>&1 &) && echo updated`;
+          const id = spawnDetached('/bin/bash', ['-c', script], 'update', 'update to ' + latest);
+          return ok(res, { started: true, to: latest, job: id, note: 'the plane restarts with the new version in a few seconds — the dashboard blinks once, then reload it' });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/backup/init' && req.method === 'POST') {
+        // initialize the encrypted backup repo (restic + a generated key).
+        // The key file IS the backup key — the response says so out loud.
+        try {
+          const gitliveJs = path.join(__dirname, '..', 'gitlive.js');
+          const out = sh('node', [gitliveJs, 'backup', 'init'], { env: process.env });
+          const repo = path.join(os.homedir(), '.gitlive', 'backup-repo');
+          const key = path.join(os.homedir(), '.gitlive', 'backup.key');
+          return ok(res, {
+            initialized: fs.existsSync(path.join(repo, 'config')),
+            repo, key,
+            note: 'the password file IS the backup key — copy it offsite with the repo, or the backups are unrecoverable',
+            output: String(out || '').slice(-400),
+          });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/backup' && req.method === 'POST') {
+        // backup run / verify / check — spawned detached (restic can take
+        // minutes); receipts + the list above show the real progress.
+        try {
+          const body = await readBody(req);
+          const action = String(body && body.action || 'run');
+          const gitliveJs = path.join(__dirname, '..', 'gitlive.js');
+          const reg = gitlive.loadRegistry();
+          const names = Object.keys(reg);
+          if (action === 'run') {
+            if (!names.length) return fail(res, 400, 'INVALID_ARGS', 'no apps registered — nothing to back up');
+            const targets = body.app ? names.filter((n) => n === String(body.app)) : names;
+            if (!targets.length) return fail(res, 404, 'NOT_FOUND', 'No app named "' + body.app + '"');
+            for (const n of targets) spawnDetached('node', [gitliveJs, 'backup', n], 'backup', 'backup ' + n);
+            // the machine's own memory rides the same switch (secrets excluded
+            // by design — see cmdBackupState's exclude list)
+            if (!body.app) spawnDetached('node', [gitliveJs, 'backup', 'state'], 'backup', 'backup control-plane state');
+            return ok(res, { started: true, apps: targets.length, note: 'snapshots are running (apps + control-plane state) — receipts appear in the backups list' });
+          }
+          if (action === 'verify') {
+            if (!body.app) return fail(res, 400, 'INVALID_ARGS', 'verify needs the app name');
+            spawnDetached('node', [gitliveJs, 'backup', 'verify', String(body.app)], 'drill', 'drill ' + String(body.app));
+            return ok(res, { started: true, app: body.app, note: 'restore drill running — restores the newest snapshot to a throwaway dir and compares every file' });
+          }
+          if (action === 'check') {
+            spawnDetached('node', [gitliveJs, 'backup', 'check'], 'check', 'restic check');
+            return ok(res, { started: true, note: 'restic check running — a backup that cannot be verified is a wish' });
+          }
+          return fail(res, 400, 'INVALID_ARGS', 'action must be run | verify | check');
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/boot' && req.method === 'GET') {
+        try {
+          const { execFileSync } = require('node:child_process');
+          const plist = path.join(os.homedir(), 'Library', 'LaunchAgents', 'dev.gitlive.control.plist');
+          let loaded = false;
+          try { execFileSync('launchctl', ['print', 'gui/' + String(process.getuid ? process.getuid() : '').replace(/^gui\//, ''), 'dev.gitlive.control'], { stdio: 'ignore', timeout: 3000 }); loaded = true; } catch { /* not loaded */ }
+          return ok(res, { installed: fs.existsSync(plist), loaded, path: plist });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/boot' && req.method === 'POST') {
+        try {
+          const body = await readBody(req);
+          const action = String(body && body.action || '');
+          if (action !== 'install' && action !== 'remove') return fail(res, 400, 'INVALID_ARGS', 'action must be install | remove');
+          const gitliveJs = path.join(__dirname, '..', 'gitlive.js');
+          sh('node', [gitliveJs, 'boot', action], { env: process.env });
+          const plist = path.join(os.homedir(), 'Library', 'LaunchAgents', 'dev.gitlive.control.plist');
+          return ok(res, { installed: fs.existsSync(plist), action });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
       if (p === '/api/public' && req.method === 'GET') return ok(res, await publicReachCheck(false));
       if (p === '/api/public/refresh' && req.method === 'POST') return ok(res, await publicReachCheck(true));
       if (p === '/api/up' && req.method === 'POST') {
@@ -1290,6 +2436,37 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
         try { return ok(res, domainZoneAction(await readBody(req))); }
         catch (err) { return fail(res, err.code === 'INVALID_ARGS' ? 400 : (err.code === 'NOT_FOUND' ? 404 : 500), err.code || 'INTERNAL', err.message || String(err)); }
       }
+      if (p === '/api/domains/cert' && req.method === 'POST') {
+        // wildcard ACME for a zone (DNS-01 through the zone's stored token —
+        // works behind NAT). Long-running on purpose: the button waits.
+        try {
+          const body = await readBody(req);
+          const zone = String(body && body.zone || '').toLowerCase();
+          const staging = Boolean(body && body.staging);
+          if (!zone) return fail(res, 400, 'INVALID_ARGS', 'zone is required');
+          const zones = gitlive.loadZones();
+          const z = zones[zone];
+          if (!z) return fail(res, 404, 'NOT_FOUND', 'zone "' + zone + '" is not registered — add it in Settings → naming');
+          const token = z.dnsToken || '';
+          if (!token) return fail(res, 400, 'INVALID_ARGS', 'zone "' + zone + '" has no DNS token — paste its deSEC token in Settings → naming first');
+          const r = await gitlive.issueCertFor('*.' + zone, { zone, token, staging });
+          return ok(res, r);
+        } catch (err) {
+          // a failed certificate request is an audit fact, not just a toast
+          try { require('../crypt.js').logEvent('cert-failed', { zone, reason: String(err.message || err).slice(0, 200) }); } catch { /* audit best-effort */ }
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
+      }
+      if (p === '/api/domains/dns-history' && req.method === 'GET') {
+        try { return ok(res, dnsHistoryData()); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
+      if (p === '/api/certs' && req.method === 'GET') {
+        // certificate visibility: every cert gitlive holds, with days-left —
+        // expiry must never be a browser-warning surprise (CapRover pattern)
+        try { return ok(res, certsOverview()); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
       if (p === '/api/settings' && req.method === 'GET') {
         const adminSet = Boolean(await adminEmail());
         const regOpenSetting = await registrationOpenSetting();
@@ -1306,6 +2483,27 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
         if (!allowRegister) await setRegistrationOpen(body.open);
         const adminSet = Boolean(await adminEmail());
         return ok(res, { registrationOpen: allowRegister || body.open || !adminSet, note: allowRegister ? 'startup flag --allow-register is set; this toggle is inert until the flag is removed' : null });
+      }
+      if (p === '/api/keys/action' && req.method === 'POST') {
+        // key material actions. Duress wrapping stays terminal-only: it needs a
+        // passphrase, and a passphrase typed into a browser is one more place a
+        // secret can leak — the CLI is the honest home for that one.
+        try {
+          const body = await readBody(req);
+          const action = String(body && body.action || '');
+          const gitliveJs = path.join(__dirname, '..', 'gitlive.js');
+          const args = [gitliveJs, 'crypt'];
+          if (action === 'keygen') args.push('keygen');
+          else if (action === 'rotate') args.push('rotate');
+          else if (action === 'deadman-arm') args.push('deadman', 'arm', '--hours', String(Number(body.hours) || 72));
+          else if (action === 'deadman-disarm') args.push('deadman', 'disarm');
+          else return fail(res, 400, 'INVALID_ARGS', 'action must be keygen | rotate | deadman-arm | deadman-disarm (duress wrapping stays terminal-only: it takes a passphrase)');
+          const out = sh('node', args, { env: process.env });
+          try { require('../crypt.js').logEvent('keys', { action }); } catch { /* best effort */ }
+          return ok(res, { action, output: String(out || '').slice(-300) });
+        } catch (err) {
+          return fail(res, 500, 'INTERNAL', err.message || String(err));
+        }
       }
       if (p === '/api/keys' && req.method === 'GET') return ok(res, keysStatus());
       if (p === '/api/mesh/invite' && req.method === 'POST') {
@@ -1405,10 +2603,190 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
         try {
           return ok(res, await fn(appName));
         } catch (err) {
-          return fail(res, 404, 'NOT_FOUND', err.message || String(err));
+          const code = err.code || 'NOT_FOUND';
+          return fail(res, code === 'INVALID_ARGS' ? 400 : 404, code, err.message || String(err));
         }
       };
 
+      if (appsMatch && req.method === 'GET' && appsMatch[2] === 'diagnose') {
+        // the app troubleshoot chain: why is it down / why no public traffic —
+        // one hop per row, one honest fix per hop (the cockpit's question-first rule)
+        return runAction(async (n) => appDiagnose(n));
+      }
+      if (appsMatch && req.method === 'PUT' && appsMatch[2] === 'env') {
+        // the env manager: set/delete keys in the app's secrets file.
+        // VALUES ARE WRITTEN, NEVER RETURNED — GET only reports key names
+        // and masked lengths; nothing here ever logs a value.
+        return runAction(async (n) => {
+          const app = gitlive.loadRegistry()[n];
+          if (!app) throw new Error('No app named "' + n + '"');
+          const f = gitlive.secretsPath(n);
+          const body = await readBody(req);
+          if (body && body.apply === true) {
+            // the owner pressed "restart to apply" — clear the pending marker
+            if (app.envChangedAt) { delete app.envChangedAt; gitlive.saveRegistry(gitlive.loadRegistry()); }
+            return { applied: true };
+          }
+          const set = (body && body.set && typeof body.set === 'object') ? body.set : {};
+          const del = Array.isArray(body && body.del) ? body.del : [];
+          const existing = fs.existsSync(f)
+            ? fs.readFileSync(f, 'utf8').split('\n').filter((l) => l.trim() && !l.trim().startsWith('#'))
+            : [];
+          const map = new Map();
+          for (const l of existing) {
+            const eq = l.indexOf('=');
+            if (eq < 0) continue;
+            let k = l.slice(0, eq).trim().replace(/^export\s+/, '');
+            if (!k) continue;
+            map.set(k, l.slice(eq + 1).trim());
+          }
+          for (const k of del) map.delete(String(k));
+          for (const [k, v] of Object.entries(set)) {
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(String(k))) {
+              const e = new Error('key names must match [A-Za-z_][A-Za-z0-9_]* — got "' + k + '"');
+              e.code = 'INVALID_ARGS';
+              throw e;
+            }
+            map.set(String(k), String(v));
+          }
+          const lines = [...map.entries()].map(([k, v]) => `${k}=${v.includes('#') || /["'\s]/.test(v) ? JSON.stringify(v) : v}`);
+          fs.mkdirSync(path.dirname(f), { recursive: true });
+          fs.writeFileSync(f, lines.join('\n') + '\n', { mode: 0o600 });
+          const reg = gitlive.loadRegistry();
+          if (reg[n]) { reg[n].envChangedAt = new Date().toISOString(); gitlive.saveRegistry(reg); }
+          return { changed: true, keys: map.size, pendingRestart: true, note: 'saved — restart the app to apply' };
+        });
+      }
+      if (appsMatch && req.method === 'POST' && appsMatch[2] === 'rm') {
+        // deleting an app is irreversible: the caller must echo the app's own
+        // name, and the response states exactly what was destroyed
+        return runAction(async (n) => {
+          const body = await readBody(req);
+          if (!body || String(body.confirm || '') !== n) {
+            const e = new Error('refusing to delete without the app name typed back (confirm: "' + n + '")');
+            e.code = 'INVALID_ARGS';
+            throw e;
+          }
+          const gitliveJs = path.join(__dirname, '..', 'gitlive.js');
+          const out = sh('node', [gitliveJs, 'rm', n, '--yes'], { env: process.env });
+          try { require('../crypt.js').logEvent('app-removed', { app: n }); } catch { /* audit best-effort */ }
+          return { removed: true, app: n, note: 'bare repo, run dir and secrets file deleted; registry entry gone', output: String(out || '').slice(-300) };
+        });
+      }
+      if (appsMatch && req.method === 'POST' && appsMatch[2] === 'restore') {
+        // restore a snapshot to a directory the owner names — the CLI refuses
+        // to write into live data, and so do we (no default target)
+        return runAction(async (n) => {
+          const body = await readBody(req);
+          const to = body && body.to ? String(body.to) : '';
+          if (!to) {
+            const e = new Error('a target directory is required — a restore never writes into the live app');
+            e.code = 'INVALID_ARGS';
+            throw e;
+          }
+          const gitliveJs = path.join(__dirname, '..', 'gitlive.js');
+          const args = [gitliveJs, 'backup', 'restore', n, '--to', to];
+          if (body.snapshot) args.push('--snapshot', String(body.snapshot));
+          const out = sh('node', args, { env: process.env });
+          return { restored: true, app: n, to, output: String(out || '').slice(-400) };
+        });
+      }
+      if (appsMatch && req.method === 'GET' && appsMatch[2] === 'secrets') {
+        // key NAMES only — values never leave the file or cross the wire
+        return runAction(async (n) => {
+          const app = gitlive.loadRegistry()[n];
+          if (!app) throw new Error('No app named "' + n + '"');
+          const f = gitlive.secretsPath(n);
+          let keys = [], exists = fs.existsSync(f);
+          if (exists) {
+            keys = fs.readFileSync(f, 'utf8').split('\n')
+              .map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+              .map((l) => l.split('=')[0].trim().replace(/^export\s+/, ''))
+              .filter(Boolean);
+          }
+          return { path: f, exists, keys, count: keys.length, note: 'values never shown — edit the file, then restart the app', pendingRestart: Boolean(app.envChangedAt) };
+        });
+      }
+      // ── v4 intelligence: measure, remember, explain ────────────────────
+      if (p === '/api/intel' && req.method === 'GET') {
+        try { return ok(res, intel.intelOverview(intelFacts())); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
+      if (p === '/api/timeline' && req.method === 'GET') {
+        // the merged story, filterable — app names only ever travel to the
+        // caller that asked; the machine area asks without an app filter
+        const q = new URL(req.url, 'http://x').searchParams;
+        const app = q.get('app') || null;
+        const days = Number(q.get('days') || 7);
+        const kinds = q.get('kinds') ? String(q.get('kinds')).split(',').filter(Boolean) : null;
+        try { return ok(res, { entries: intel.timelineFor({ app, sinceMs: Math.max(1, days) * 86400000, limit: Number(q.get('limit') || 200), kinds }) }); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
+      if (p === '/api/digest' && req.method === 'GET') {
+        const q = new URL(req.url, 'http://x').searchParams;
+        const days = Number(q.get('days') || 7);
+        const full = q.get('full') === '1';
+        try {
+          const d = intel.digestData({ days: Math.min(90, Math.max(1, days)) });
+          if (full) return ok(res, { ...d, redacted: false });
+          const redact = require('./redact.js');
+          return ok(res, {
+            ...d,
+            markdown: redact.shareable(d.markdown, { names: knownAppNames(), home: os.homedir(), maskDomains: (() => { try { return Object.keys(gitlive.loadZones()); } catch { return []; } })() }),
+            redacted: true,
+            note: 'identifiers masked so this can be posted anywhere; gitlive report --no-redact prints the full one for your own eyes',
+          });
+        } catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
+      if (p === '/api/policies' && req.method === 'GET') {
+        try { return ok(res, { policies: intel.loadPolicies(), agentState: intel.loadAgentState(), modes: intel.POLICY_MODES, backoffMs: intel.BACKOFF_MS }); }
+        catch (err) { return fail(res, 500, 'INTERNAL', err.message || String(err)); }
+      }
+      if (p === '/api/policies' && req.method === 'PUT') {
+        try {
+          const body = await readBody(req);
+          const current = intel.loadPolicies();
+          const next = { default: { ...current.default }, apps: { ...current.apps } };
+          if (body && body.default && typeof body.default === 'object') next.default = { ...next.default, ...body.default };
+          if (body && body.app && typeof body.app === 'object') {
+            const name = String(body.app.name || '');
+            if (!name) return fail(res, 400, 'INVALID_ARGS', 'app name is required');
+            if (!gitlive.loadRegistry()[name]) return fail(res, 404, 'NOT_FOUND', `No app named "${name}"`);
+            if (body.app.remove) delete next.apps[name];
+            else next.apps[name] = { ...(next.apps[name] || {}), ...body.app.policy };
+            // validate before writing: a policy that cannot be honoured is
+            // worse than no policy
+            const merged = intel.policyFor(name, next);
+            if (!intel.POLICY_MODES.includes(merged.mode)) return fail(res, 400, 'INVALID_ARGS', `mode must be one of ${intel.POLICY_MODES.join(', ')}`);
+            for (const w of merged.maintenance) {
+              if (!/^\d{2}:\d{2}$/.test(String(w.from || '')) || !/^\d{2}:\d{2}$/.test(String(w.to || ''))) {
+                return fail(res, 400, 'INVALID_ARGS', 'maintenance windows need from/to as HH:MM');
+              }
+            }
+          }
+          const saved = intel.savePolicies(next);
+          try { require('../crypt.js').logEvent('policy', { app: (body && body.app && body.app.name) || null, detail: 'updated' }); } catch { /* audit best-effort */ }
+          return ok(res, { policies: saved });
+        } catch (err) { return fail(res, 400, 'INVALID_ARGS', err.message || String(err)); }
+      }
+
+      // ── create an app from the dashboard (the last terminal-only step) ──
+      if (p === '/api/browse' && req.method === 'GET') {
+        // read-only folder listing so the create form can offer a picker
+        // instead of asking the owner to type an absolute path from memory
+        try { return ok(res, browseData(new URL(req.url, 'http://x').searchParams.get('path') || '')); }
+        catch (err) { return fail(res, err.code === 'INVALID_ARGS' ? 400 : 500, err.code || 'INTERNAL', err.message); }
+      }
+      if (p === '/api/apps' && req.method === 'POST') {
+        let body;
+        try { body = await readBody(req); } catch (err) { return fail(res, 400, 'INVALID_ARGS', err.message); }
+        try {
+          return ok(res, createAppData(body));
+        } catch (err) {
+          const status = err.code === 'INVALID_ARGS' ? 400 : err.code === 'CONFLICT' ? 409 : 500;
+          return fail(res, status, err.code || 'INTERNAL', err.message, err.details);
+        }
+      }
       if (p === '/api/apps' && req.method === 'GET') {
         const apps = localExecutor.listApps();
         const reg = gitlive.loadRegistry();
@@ -1430,11 +2808,122 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
           // proxy-down hint (field finding): backend slots healthy, public
           // port dead — tell the owner the fix is proxy supervision/restart
           st.proxyDownHint = Boolean(st.safe && st.proxyUp === false);
+          st.envChangedAt = (gitlive.loadRegistry()[n] || {}).envChangedAt || null;
+          st.schedule = (gitlive.loadRegistry()[n] || {}).schedule || null;
           return st;
         });
       }
       if (appsMatch && req.method === 'GET' && appsMatch[2] === 'logs') {
         return runAction((n) => localExecutor.getLogs(n));
+      }
+      if (appsMatch && req.method === 'POST' && appsMatch[2] === 'logs') {
+        // clear the deploy log OR set its retention cap (disk-full protection)
+        return runAction(async (n) => {
+          const app = gitlive.loadRegistry()[n];
+          if (!app) throw new Error('No app named "' + n + '"');
+          const body = await readBody(req);
+          if (body && body.logMaxMb !== undefined) {
+            const cap = Math.max(0, Number(body.logMaxMb) || 0);
+            app.logMaxMb = cap || undefined;
+            gitlive.saveRegistry(gitlive.loadRegistry());
+            return { capSet: cap || null, note: cap ? 'log capped at ' + cap + ' MB — the oldest half is dropped when it grows past that' : 'cap off — the log grows without limit' };
+          }
+          const f = path.join(app.runPath, 'deploy.log');
+          if (fs.existsSync(f)) fs.writeFileSync(f, '');
+          return { cleared: true, note: 'deploy log emptied — the next push writes fresh lines' };
+        });
+      }
+      if (appsMatch && (req.method === 'PUT' || req.method === 'DELETE') && appsMatch[2] === 'schedule') {
+        // scheduled tasks: a cron string + one command, run by the plane's
+        // own ticker (seconds field optional for tests; 5 fields = classic)
+        return runAction(async (n) => {
+          const reg = gitlive.loadRegistry();
+          const app = reg[n];
+          if (!app) throw new Error('No app named "' + n + '"');
+          if (req.method === 'DELETE') {
+            delete app.schedule;
+            gitlive.saveRegistry(reg);
+            return { removed: true };
+          }
+          const body = await readBody(req);
+          const cron = String(body && body.cron || '').trim();
+          const cmd = String(body && body.cmd || '').trim();
+          if (!cron || !cmd) {
+            const e = new Error('schedule needs a cron string and a command');
+            e.code = 'INVALID_ARGS';
+            throw e;
+          }
+          const parts = cron.split(/\s+/);
+          if ((parts.length !== 5 && parts.length !== 6) || !/^[\d*/,\-\s]+$/.test(cron)) {
+            const e = new Error('cron must be 5 fields (minute hour day month weekday) — an optional 6th seconds field is allowed');
+            e.code = 'INVALID_ARGS';
+            throw e;
+          }
+          app.schedule = { cron, cmd, enabled: body.enabled !== false, setAt: new Date().toISOString() };
+          gitlive.saveRegistry(reg);
+          return { ok: true, schedule: app.schedule };
+        });
+      }
+      if (appsMatch && req.method === 'GET' && appsMatch[2] === 'reliability') {
+        // the app's own measured record: uptime over covered time, every
+        // outage, MTBF/MTTR, and its recent timeline — the same numbers the
+        // intelligence section shows, scoped to one app
+        return runAction(async (n) => {
+          const rel = intel.reliabilityFor(n);
+          const policy = intel.policyFor(n);
+          return {
+            ...rel,
+            policy,
+            backoff: intel.backoffFor(n),
+            maintenanceNow: intel.inMaintenance(policy) || null,
+            timeline: intel.timelineFor({ app: n, limit: 40, sinceMs: 14 * 86400000 }),
+          };
+        });
+      }
+      if (appsMatch && req.method === 'GET' && appsMatch[2] === 'stats') {
+        // honest resource visibility: RSS + uptime from the pid, data/log
+        // sizes from the disk — no agents, no invented numbers
+        return runAction(async (n) => {
+          const app = gitlive.loadRegistry()[n];
+          if (!app) throw new Error('No app named "' + n + '"');
+          const out = { pid: null, rssMb: null, uptime: null, dataBytes: null, logBytes: null, diskFreeMb: null };
+          const pidFile = app.safe ? path.join(app.runPath, 'proxy.pid') : path.join(app.runPath, 'app.pid');
+          try {
+            const pid = fs.readFileSync(pidFile, 'utf8').trim();
+            out.pid = Number(pid) || null;
+          } catch { /* not running */ }
+          if (out.pid) {
+            try {
+              const { execFileSync } = require('node:child_process');
+              const rss = execFileSync('ps', ['-o', 'rss=', '-p', String(out.pid)], { encoding: 'utf8', timeout: 2000 }).trim();
+              if (rss) out.rssMb = Math.round(Number(rss) / 1024);
+              const etime = execFileSync('ps', ['-o', 'etime=', '-p', String(out.pid)], { encoding: 'utf8', timeout: 2000 }).trim();
+              if (etime) out.uptime = etime;
+            } catch { /* honest nulls */ }
+          }
+          try {
+            const { execFileSync } = require('node:child_process');
+            if (app.runPath && fs.existsSync(path.join(app.runPath, 'data'))) {
+              const du = execFileSync('du', ['-sk', path.join(app.runPath, 'data')], { encoding: 'utf8', timeout: 3000 }).trim().split(/\s+/)[0];
+              if (du) out.dataBytes = Number(du) * 1024;
+            }
+            const logF = path.join(app.runPath, 'deploy.log');
+            if (fs.existsSync(logF)) out.logBytes = fs.statSync(logF).size;
+            const df = execFileSync('df', ['-k', app.runPath || os.homedir()], { encoding: 'utf8', timeout: 3000 }).trim().split('\n')[1];
+            if (df) { const avail = df.split(/\s+/)[3]; if (avail) out.diskFreeMb = Math.round(Number(avail) / 1024); }
+          } catch { /* honest nulls */ }
+          return out;
+        });
+      }
+      if (appsMatch && req.method === 'POST' && appsMatch[2] === 'graduate') {
+        // borrowed label → the owner's own domain, from the dashboard
+        try {
+          const body = await readBody(req);
+          const r = gitlive.graduateAppData(decodeURIComponent(appsMatch[1]), body && body.domain, body || {});
+          return ok(res, r);
+        } catch (err) {
+          return fail(res, err.code === 'INVALID_ARGS' ? 400 : 500, err.code || 'INTERNAL', err.message || String(err));
+        }
       }
       if (appsMatch && req.method === 'POST') {
         const action = appsMatch[2];
@@ -1470,12 +2959,40 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
     url: `http://${host}:${port}`,
     adminEmail: () => adminEmail(),
     listen() {
+      const warning = nonLoopbackWarning(host);
+      if (warning) return Promise.reject(new Error(warning));
+      rotateServeLog();
       return new Promise((resolve, reject) => {
         server.once('error', reject);
         server.listen(port, host, () => {
           server.removeListener('error', reject);
           // eslint-disable-next-line no-console
           console.log(`gitlive control plane on ${instance.url}`);
+          cronStart(); // the scheduled-task ticker rides the plane's lifetime
+          // the plane's own helpers: repair / diagnose / recommend. Bounded,
+          // receipted, and switchable (GITLIVE_AGENTS=0). They run the same
+          // functions the buttons do — no second implementation.
+          try {
+            agentCaps = {
+              listApps: () => gitlive.listAppsData(),
+              restart: (n) => gitlive.restartAppData(n),
+              diagnose: (n) => appDiagnose(n),
+              deployHistory: (n) => { try { return gitlive.readHistory((gitlive.loadRegistry()[n] || {}).runPath, 5) || []; } catch { return []; } },
+              backups: () => backupsOverview(),
+              diskFreeMb: () => { try { const df = require('node:child_process').execFileSync('df', ['-k', os.homedir()], { encoding: 'utf8' }).trim().split('\n')[1]; const mb = Math.round(Number(df.split(/\s+/)[3]) / 1024); return mb; } catch { return null; } },
+            };
+            require('./agents.js').start(agentCaps);
+          } catch { /* agents are optional helpers, never a boot dependency */ }
+          installSignalHandlers(instance);
+          // dead sessions never accumulate: prune at boot, then hourly with the
+          // rest of the maintenance tick
+          try { const p = pruneSessions('boot'); if (p.pruned) accessLog(`${new Date().toISOString()} pruned ${p.pruned} expired session(s)`); } catch { /* never block a boot */ }
+          sessionPruneTimer = setInterval(() => { try { pruneSessions('hourly'); } catch { /* best effort */ } }, 60 * 60 * 1000);
+          sessionPruneTimer.unref();
+          // the resource series the v4 trend detectors read (RSS / data / log /
+          // free disk every 5 min): without a history there is no forecast
+          startStatsSampler();
+          setTimeout(runMaintenance, 5000).unref(); // state snapshot + repo check, receipted
           adminEmail().then((admin) => {
             // eslint-disable-next-line no-console
             console.log(admin
@@ -1487,11 +3004,44 @@ async function createControlServer({ port = 5180, host = '127.0.0.1', allowRegis
       });
     },
     close() {
+      try { clearInterval(healthTimer); } catch { /* not started */ }
+      try { require('./agents.js').stop(); } catch { /* agents optional */ }
+      try { clearInterval(cronTimer); cronTimer = null; } catch { /* not started */ }
+      try { clearInterval(sessionPruneTimer); sessionPruneTimer = null; } catch { /* not started */ }
+      try { clearInterval(statsTimer); statsTimer = null; } catch { /* not started */ }
       try { client.close(); } catch { /* already closed */ }
-      return new Promise((resolve) => server.close(() => resolve()));
+      // stop accepting, let in-flight requests finish, then resolve — a clean
+      // exit is what lets the boot agent restart us without losing a receipt
+      return new Promise((resolve) => {
+        try { server.close(() => resolve()); } catch { resolve(); }
+        setTimeout(resolve, 3000).unref(); // never hang a shutdown on a stuck socket
+      });
     },
+    // exposed for the signal handlers + tests
+    shutdown: () => instance.close(),
   };
   return instance;
 }
 
-module.exports = { createControlServer, CONTROL_ROOT };
+// ── signals: a clean stop instead of a hard death ────────────────────────
+// SIGTERM (the boot agent restarting us) and SIGINT (Ctrl-C in a terminal)
+// both drain: timers cleared, in-flight requests finished, then exit 0.
+// Without this a restart could drop a receipt mid-write.
+function installSignalHandlers(instance) {
+  if (installSignalHandlers.installed) return;
+  installSignalHandlers.installed = true;
+  let stopping = false;
+  const stop = (sig) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`gitlive control plane: ${sig} — draining`);
+    instance.shutdown()
+      .then(() => process.exit(0))
+      .catch(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3500).unref();
+  };
+  process.on('SIGTERM', () => stop('SIGTERM'));
+  process.on('SIGINT', () => stop('SIGINT'));
+}
+
+module.exports = { createControlServer, CONTROL_ROOT, accessLog, ACCESS_LOG, pruneSessions, intelFacts, sampleStats };

@@ -78,3 +78,31 @@ gitlive is distributed privately. Report security issues through the
 channel you received gitlive from. Include: version (`gitlive --version`),
 what you observed, and a minimal reproduction. Public disclosure policy
 will follow the first public release.
+
+## Information boundaries (v4.0.1 audit)
+
+gitlive is self-hosted, so "data protection" mostly means: the machine must not
+publish its owner's business by accident. The boundaries, each pinned by
+`tests/leak.test.js`:
+
+| Surface | Rule |
+| --- | --- |
+| Agent ledger, timeline, digest | Credentials are stripped **before** a receipt is written, not on display |
+| Error responses | Credentials stripped at one central boundary; paths kept (the owner needs them) |
+| Support bundle | Identifiers masked by default; explicit `?full=1` for the owner's copy; payload says which |
+| Weekly report | Identifiers masked by default; `gitlive report --no-redact` for the full one |
+| Access log | Method, path, status, duration, request id — **never** a query string (paths, tokens) |
+| `/health` | Status only: no names, no paths, no addresses, no handles |
+| Dashboard | CSP `default-src 'self'` + `frame-ancestors 'none'`, no framing, no referrer, no sniffing, no third-party asset |
+| DNS / entry / node tokens | Never returned by any endpoint; used server-side only |
+| Peer announcements | Node identity + public key + endpoints; no app names, no paths |
+| Outbound | Only where the owner asks (publish a name, request a cert, join a mesh) plus two check-ups that `GITLIVE_OFFLINE=1` disables |
+| Shipped files | **No marker of the building machine** (home dir, user name, address) in anything `npm pack` includes |
+
+The redactor's one deliberate asymmetry: **secrets are always stripped,
+identifiers are masked only where the artifact is meant to leave the machine.**
+An error the owner reads on their own screen keeps the path they must fix.
+
+To report a leak: open an issue with the request id (every response carries
+`x-request-id`, and the matching line is in `~/.gitlive/control/access.log`) and
+the support bundle — which is masked by default, so it is safe to attach.

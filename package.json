@@ -1,6 +1,6 @@
 {
   "name": "gitlive",
-  "version": "2.6.2",
+  "version": "4.0.1",
   "description": "Turn any git repo into a live running process with \"git push\" \u2014 no PaaS, no BaaS. Auth, SQLite and file storage for apps via gitlive-client; GitHub-repo-as-storage mode; owner-signed manifests; control-plane dashboard. Zero runtime dependencies (Node built-ins only).",
   "bin": {
     "gitlive": "gitlive.js"

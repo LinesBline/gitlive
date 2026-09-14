@@ -10,6 +10,7 @@ const os = require('os');
 const fs = require('fs');
 const net = require('net');
 const http = require('http');
+const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
 
 function assert(cond, msg) {
@@ -52,7 +53,12 @@ function freePort() {
   });
 }
 
-const env = { ...process.env, HOME: fakeHome, GITLIVE_CONTROL_DIR: controlDir, GITLIVE_HEALTH_INTERVAL_MS: '200' };
+// an oversized serve.log exists BEFORE the plane starts — the boot-time
+// rotation must trim it (a machine running for months must not fill its disk)
+fs.mkdirSync(controlDir, { recursive: true });
+fs.writeFileSync(path.join(controlDir, 'serve.log'), 'x'.repeat(6 * 1024 * 1024));
+
+const env = { ...process.env, HOME: fakeHome, GITLIVE_CONTROL_DIR: controlDir, GITLIVE_HEALTH_INTERVAL_MS: '200', GITLIVE_CRON_INTERVAL_MS: '400', GITLIVE_MAINTENANCE: '0' };
 
 function cli(args) {
   return execFileSync('node', [GITLIVE_JS, ...args], { env, encoding: 'utf8' });
@@ -151,7 +157,7 @@ async function req(url, method, { token, body, headers } = {}) {
     assert(r.status === 401 && r.data.error.code === 'AUTH_ERROR', 'wrong password must 401');
     r = await req(base + '/api/auth/login', 'POST', { body: { email: 'admin@example.com', password: 'hunter22' } });
     assert(r.status === 200 && r.data.data.token, 'login returns a session token');
-    const token = r.data.data.token;
+    let token = r.data.data.token;
 
     // 3b — logins land in the audit events log (login-fail for the wrong
     // password above, login for the success) — read the server's own file
@@ -221,6 +227,38 @@ async function req(url, method, { token, body, headers } = {}) {
     assert(r.data.ok && r.data.data.ok === false && /--safe/.test(r.data.data.reason), 'rollback on a plain app returns the CLI\'s honest reason');
     r = await req(base + '/api/apps/myapp/restart', 'POST', { token, body: {} });
     assert(r.data.ok && typeof r.data.data === 'object' && 'name' in r.data.data, 'restart action is served (deploy spine needs it for safe apps)');
+
+    // 7c — env manager: values are written, NEVER returned; pending banner flag
+    r = await req(base + '/api/apps/myapp/env', 'PUT', { token, body: { set: { FOO: 'bar baz', PLAIN: 'quiet' } } });
+    assert(r.status === 200 && r.data.ok && r.data.data.pendingRestart === true, 'env set marks pending restart:\n' + JSON.stringify(r.data).slice(0, 200));
+    r = await req(base + '/api/apps/myapp/secrets', 'GET', { token });
+    const leaked = JSON.stringify(r.data);
+    assert(r.status === 200 && r.data.data.keys.includes('FOO') && r.data.data.keys.includes('PLAIN') && r.data.data.count === 2, 'secrets GET returns the key names');
+    assert(!leaked.includes('bar baz') && !leaked.includes('quiet'), 'secrets GET NEVER returns values:\n' + leaked.slice(0, 200));
+    const rawFile = fs.readFileSync(path.join(fakeHome, '.gitlive', 'apps', 'myapp.secrets.env'), 'utf8');
+    assert(/FOO="bar baz"/.test(rawFile) && /PLAIN=quiet/.test(rawFile), 'the file carries the real values (quoted when needed):\n' + rawFile);
+    r = await req(base + '/api/apps/myapp/env', 'PUT', { token, body: { set: { 'BAD KEY': 'x' } } });
+    assert(r.status === 400 && r.data.error.code === 'INVALID_ARGS', 'invalid key name refused');
+    r = await req(base + '/api/apps/myapp/env', 'PUT', { token, body: { del: ['FOO'] } });
+    assert(r.status === 200 && r.data.data.changed === true, 'env delete works');
+    r = await req(base + '/api/apps/myapp/env', 'PUT', { token, body: { apply: true } });
+    assert(r.status === 200 && r.data.data.applied === true, 'restart-to-apply clears the pending marker');
+
+    // 7d — scheduled tasks: the plane's cron ticker fires, receipts land
+    const cronMarker = path.join(fakeHome, 'cron-marker.txt');
+    r = await req(base + '/api/apps/myapp/schedule', 'PUT', { token, body: { cron: '*/1 * * * * *', cmd: 'echo tick >> ' + cronMarker } });
+    assert(r.status === 200 && r.data.ok && r.data.data.schedule.cron.includes('*/1'), 'schedule set');
+    r = await req(base + '/api/apps/myapp/schedule', 'PUT', { token, body: { cron: 'not a cron', cmd: 'x' } });
+    assert(r.status === 400 && r.data.error.code === 'INVALID_ARGS', 'invalid cron refused');
+    await waitFor(() => fs.existsSync(cronMarker), 'cron marker file', 30, 300);
+    assert(/tick/.test(fs.readFileSync(cronMarker, 'utf8')), 'the scheduled command ran:\n' + fs.readFileSync(cronMarker, 'utf8'));
+    r = await req(base + '/api/jobs', 'GET', { token });
+    assert(r.data.data.jobs.some((j) => j.kind === 'cron' && /cron: myapp/.test(j.label || '')), 'cron fire lands in the job ledger');
+    r = await req(base + '/api/events', 'GET', { token });
+    assert(r.data.data.entries.some((e) => e.kind === 'cron'), 'cron fire lands in the audit events');
+    r = await req(base + '/api/apps/myapp/schedule', 'DELETE', { token });
+    assert(r.status === 200 && r.data.data.removed === true, 'schedule removed');
+    console.log('OK: scheduled tasks — ticker fires, jobs + events receipted, invalid cron refused');
 
     // 7b — status-rail data: /api/daemon + per-app lastDeploy enrichment
     r = await req(base + '/api/daemon', 'GET', { token });
@@ -388,6 +426,34 @@ async function req(url, method, { token, body, headers } = {}) {
     assert(Array.isArray(r.data.data.receipts), 'datamap carries the signed deploy-tag list (empty without a bare repo)');
     console.log('OK: data map — real sqlite tables/rows + file area + protection posture');
 
+    // 7d — expired sessions are pruned, live ones are left alone. Sessions are
+    // only deleted when their own token is presented again, so a long-lived
+    // machine accumulates dead rows (the live plane had 23, three expired).
+    const sdb = new DatabaseSync(path.join(controlDir, 'app.db'));
+    const ownerId = sdb.prepare('SELECT id FROM _gitlive_users ORDER BY id LIMIT 1').get().id;
+    const deadHash = 'dead'.repeat(16);
+    const liveHash = 'live'.repeat(16);
+    sdb.prepare('INSERT OR REPLACE INTO _gitlive_sessions (token_hash, user_id, expires_at) VALUES (?,?,?)')
+      .run(deadHash, ownerId, new Date(Date.now() - 86400000).toISOString());
+    sdb.prepare('INSERT OR REPLACE INTO _gitlive_sessions (token_hash, user_id, expires_at) VALUES (?,?,?)')
+      .run(liveHash, ownerId, new Date(Date.now() + 86400000).toISOString());
+    sdb.close();
+    process.env.GITLIVE_CONTROL_DIR = controlDir; // the module reads it at require time
+    const { pruneSessions } = require(path.join(__dirname, '..', 'control', 'server.js'));
+    const pruned = pruneSessions('test');
+    assert(pruned.pruned >= 1, 'prune removes the expired session: ' + JSON.stringify(pruned));
+    const sdb2 = new DatabaseSync(path.join(controlDir, 'app.db'));
+    const deadLeft = sdb2.prepare('SELECT COUNT(*) AS c FROM _gitlive_sessions WHERE token_hash = ?').get(deadHash).c;
+    const liveLeft = sdb2.prepare('SELECT COUNT(*) AS c FROM _gitlive_sessions WHERE token_hash = ?').get(liveHash).c;
+    sdb2.close();
+    assert(deadLeft === 0, 'the expired row is gone');
+    assert(liveLeft === 1, 'a live session is never pruned');
+    // and the token that was pruned really is refused now
+    const liveToken = 'live'.repeat(16);
+    r = await req(base + '/api/apps', 'GET', { token: liveToken });
+    assert(r.status === 401, 'the hash-only fixture is not a usable token (expected 401): ' + r.status);
+    console.log('OK: expired dashboard sessions are pruned at boot/hourly, live ones untouched');
+
     // 8 — dashboard HTML is served
     r = await req(base + '/', 'GET');
     assert(r.status === 200 && typeof r.data === 'string' && r.data.includes('gitlive control plane') && r.data.includes('form-login'), 'dashboard HTML serves with the login form');
@@ -510,6 +576,78 @@ async function req(url, method, { token, body, headers } = {}) {
     console.log('OK: dashboard HTML served');
     console.log('OK: gitlive agent connect registers + heartbeats + reconnects idempotently');
     console.log('OK: bad node secret refused; logout invalidates session');
+
+    // 12 — observability: request id header + access log (never a secret)
+    const healthRes = await fetch(base + '/health');
+    const healthBody = await healthRes.json().catch(() => null);
+    const rid = healthRes.headers.get('x-request-id');
+    assert(healthRes.status === 200 && healthBody && healthBody.ok === true && typeof healthBody.uptime === 'number', 'unauthenticated /health answers status only: ' + JSON.stringify(healthBody));
+    assert(!/key|handle|email|app/i.test(JSON.stringify(healthBody)), '/health leaks nothing but status');
+    assert(/^[0-9a-f]{8}$/.test(String(rid)), 'every response carries a request id: ' + String(rid));
+    const logPath = path.join(fakeHome, '.gitlive', 'control', 'access.log');
+    assert(fs.existsSync(logPath), 'access log exists after requests');
+    const logged = fs.readFileSync(logPath, 'utf8');
+    assert(/GET \/health → 200/.test(logged), 'access log records method, path and status:\n' + logged.slice(-300));
+    assert(logged.includes(String(rid)), 'the logged line carries the request id it answered with');
+    assert(!/hunter22/.test(logged), 'the access log NEVER contains a password');
+    console.log('OK: request ids + access log — debuggable, no secrets');
+
+    // the logout test above revoked the session — get a fresh one for these
+    const freshLogin = await req(base + '/api/auth/login', 'POST', { body: { email: 'admin@example.com', password: 'hunter22' } });
+    assert(freshLogin.status === 200 && freshLogin.data.data.token, 'a fresh session for the observability checks');
+    token = freshLogin.data.data.token;
+
+    // 13 — serve.log rotation happened during boot
+    const serveLogSize = fs.statSync(path.join(controlDir, 'serve.log')).size;
+    assert(serveLogSize < 5 * 1024 * 1024, 'boot rotates an oversized serve.log (' + serveLogSize + ' bytes left)');
+    console.log('OK: serve.log rotates at boot — ' + serveLogSize + ' bytes left of 6 MB');
+
+    // 14 — a non-loopback bind is refused with an honest reason
+    let wideErr = '';
+    try { cli(['serve', '--host', '0.0.0.0', '--port', String(await freePort())]); } catch (err) {
+      wideErr = String(err.stdout || '') + String(err.stderr || '');
+    }
+    assert(/refusing to bind 0\.0\.0\.0/.test(wideErr) && /GITLIVE_ALLOW_NON_LOOPBACK=1/.test(wideErr), 'binding wide is refused with the TLS reason:\n' + wideErr);
+    console.log('OK: non-loopback bind refused — cleartext sessions are not silently exposed');
+
+    // 15 — webhook replay guard: the same delivery id is refused the second time
+    cli(['github', 'hook', 'myapp', '--repo', 'https://github.com/example/repo.git', '--secret', 'test-secret']);
+    const hookBody = JSON.stringify({ ref: 'refs/heads/main', head_commit: { id: 'a'.repeat(40) } });
+    const sig = 'sha256=' + crypto.createHmac('sha256', 'test-secret').update(hookBody).digest('hex');
+    const delivery = 'delivery-' + crypto.randomBytes(6).toString('hex');
+    const hookOnce = () => fetch(base + '/api/github/hook?app=myapp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': sig, 'x-github-delivery': delivery },
+      body: hookBody,
+    });
+    const hookFirst = await hookOnce();
+    const hookSecond = await hookOnce();
+    assert(hookFirst.status !== 409, 'the first delivery is processed (not a replay): ' + hookFirst.status);
+    assert(hookSecond.status === 409, 'the same delivery id is refused as a replay: ' + hookSecond.status);
+    const replayEvents = await req(base + '/api/events', 'GET', { token });
+    const replayEntries = (replayEvents.data && replayEvents.data.data && replayEvents.data.data.entries) || [];
+    assert(replayEntries.some((e) => e.kind === 'github-hook-replay'), 'the replay is an audit event: ' + JSON.stringify(replayEvents.data).slice(0, 200));
+    console.log('OK: webhook replay refused + audit event written');
+
+    // 16 — automatic maintenance fires on its own (state snapshot due, no repo → honest failure)
+    const maintPort = await freePort();
+    const maintHome = fs.mkdtempSync(path.join(shortTmp, 'gitlive-maint-'));
+    fs.mkdirSync(path.join(maintHome, '.gitlive', 'control'), { recursive: true });
+    const maint = spawn('node', [GITLIVE_JS, 'serve', '--port', String(maintPort), '--no-open'], {
+      env: { ...process.env, HOME: maintHome, GITLIVE_CONTROL_DIR: path.join(maintHome, '.gitlive', 'control'),
+        GITLIVE_MAINTENANCE: '1', GITLIVE_MAINT_STATE_HOURS: '0', GITLIVE_HEALTH_INTERVAL_MS: '200' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    try {
+      await waitForServer('http://127.0.0.1:' + maintPort + '/');
+      const jobsFile = path.join(maintHome, '.gitlive', 'jobs.jsonl');
+      await waitFor(() => fs.existsSync(jobsFile) && /maintenance: control-plane state/.test(fs.readFileSync(jobsFile, 'utf8')), 'maintenance job', 24, 400);
+      const maintLog = fs.readFileSync(path.join(maintHome, '.gitlive', 'control', 'access.log'), 'utf8');
+      assert(/maintenance/.test(maintLog), 'maintenance is recorded in the access log');
+      console.log('OK: automatic maintenance fires on its own — receipts, not wishes');
+    } finally {
+      await new Promise((r2) => { maint.on('exit', r2); maint.kill('SIGTERM'); });
+    }
     console.log('\nALL CONTROL-PLANE TESTS PASSED');
   } finally {
     await server.stop();

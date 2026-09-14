@@ -1957,3 +1957,109 @@ courtesy into a cage); a zone serves apps and gets nothing back (no
 traffic, no data, no metrics — the label resolves to the app's machine or
 entry, never to the zone); and gitlive ships the mechanism, never a zone
 (WORKFLOW.md "The naming law" carries the full five-point text).
+
+
+---
+
+# Deliberate architecture deviations (audited 2026-09-14)
+
+Checked against the reference library (nodebestpractices, Nest/Fastify samples).
+We keep three deviations ON PURPOSE, and this is the reasoning a future reader
+needs before "fixing" them:
+
+1. **The control plane is one process and one HTTP handler, not layered
+   modules.** Route dispatch is an explicit `if`-chain in `control/server.js`
+   rather than a router table with controllers/services/repositories. The law
+   that outranks the layering convention here is ZERO RUNTIME DEPENDENCIES:
+   gitlive must run on Node built-ins alone, so there is no framework doing the
+   routing for us. The dispatch order is therefore the routing precedence, and a
+   table would hide that ordering behind indirection for no gain at this size.
+2. **Business logic lives in `gitlive.js` as exported data functions.** The HTTP
+   layer calls the same functions the CLI calls — one implementation, two
+   transports. Extracting a service layer would duplicate that seam, not
+   strengthen it.
+3. **Storage is files under `~/.gitlive` (JSON + JSONL), with SQLite only for
+   users/sessions.** A database server would be a dependency, a daemon to
+   supervise and a new failure mode for a tool whose whole promise is "your
+   machine, your rules".
+
+---
+
+# v4.0 addendum — intelligence without a model
+
+> Written 2026-09-14, when the version finally caught up with the product.
+
+gitlive runs on Node built-ins with **zero runtime dependencies**. There is no
+service to call and no key to hold, so "intelligent" cannot mean a model in the
+loop. It has to mean something a machine can actually be: **statistics over its
+own recorded history, with the sample size printed next to every claim.**
+
+## 1. The five rules that keep it honest
+
+1. **A gap is not uptime.** The health sampler writes one line a minute; when
+   the machine sleeps or the plane restarts, the lines stop. Those stretches
+   are counted as UNKNOWN time (excluded from numerator and denominator) and
+   `coverage` is reported beside every percentage.
+2. **Too little data refuses to answer.** Fewer than five samples is not a
+   rate. A detector with fewer than its minimum sample count returns nothing at
+   all — the cockpit shows silence, not a green light. (This is the behaviour
+   Twitter's `AnomalyDetection` enforces by erroring out and LinkedIn's
+   `luminol` enforces with `DEFAULT_BITMAP_MINIMAL_POINTS_IN_WINDOWS`.)
+3. **A perfect number carries its floor.** 1,440 clean samples cannot prove
+   100%: the 95% lower bound is `1 − 3/n` (rule of three), and it is printed.
+   MTBF/MTTR need at least two or three failures before they are shown at all.
+4. **A missing factor is excluded, not zeroed.** The score renormalises its
+   weights over the factors that could actually be measured and names the ones
+   it dropped. `now` is a separate factor so a good week cannot hide an app
+   that is down this minute.
+5. **Correlation is stated as correlation.** "Went down 4 minutes after deploy
+   f0e96a63" is a fact with a timestamp; "the new code caused it" is not
+   claimed. The action offered is the reversible one.
+
+## 2. Why these algorithms and not others
+
+- **Least squares + a t-test on the slope** for leaks and disk trends, with a
+  forecast to a limit (or a doubling time when there is no configured limit).
+  A perfectly linear series has zero residual sigma, which makes the t
+  statistic 0/0 — that is *maximum* significance, and getting it wrong (as the
+  first version did) silently rejects exact integer leaks.
+- **Binomial tail over hour-of-day buckets** for failure clustering. Seasonal
+  decomposition (STL/Holt-Winters) needs at least two full seasons — 2,880
+  points for daily seasonality at one-minute sampling — which this retention
+  cannot provide honestly. Bucketing is the honest substitute at this scale.
+- **A rule-based flap detector that subtracts the transitions WE caused.**
+  A deploy or a deliberate restart flips the health series by design. Counting
+  those against the app would blame it for the machine's own actions; the
+  deliberate moments are collected (deploy history + agent receipts) and
+  removed from the flap count, and the receipt prints both numbers.
+- **A daily roll-up** because the raw series is pruned at 5,000 lines/7 days:
+  30-day claims are computed from per-day aggregates, and the result says it is
+  an aggregate with only the last 7 days' per-outage detail.
+- **Certificates: lead time is a fraction of the certificate's own lifetime**
+  (14–30 days), because CA lifetimes are shrinking (200 days from 2026-03,
+  100 from 2027-03, 47 from 2029) and a fixed two weeks of a 47-day
+  certificate is a third of its life.
+
+## 3. Control, not autonomy
+
+The helper agents never decide what is allowed: the **owner's policy** does
+(`off` / `watch` / `repair`, maintenance windows, hourly limit), and the
+adaptive backoff (5m → 15m → 1h → 6h, ±10% jitter, escalation at the third
+consecutive failure) exists so that a machine does not spend the night
+restarting something only a human can fix. **Owner intent is recorded**: `stop`
+writes an intent file, so no helper ever "repairs" an app the owner turned off.
+
+## 4. The deliberate deviations (updated)
+
+The three deviations recorded earlier still stand, and v4 adds two:
+
+4. **No external metrics stack.** No Prometheus, no exporter, no agent
+   process: JSONL files the machine already writes are the time series, and
+   the status API is computed on read. The price is retention (a daily
+   roll-up is required beyond a week); the benefit is that a self-hosted
+   machine has no second thing to keep alive, and every number is a file the
+   owner can open.
+5. **No model, no network, no key.** A self-monitoring loop that phones home
+   would be a monitoring system that fails exactly when the network does. The
+   intelligence layer is pure functions over local files, which is also why it
+   can be tested to the number (`tests/intel.test.js`).

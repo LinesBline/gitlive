@@ -105,6 +105,27 @@ function cli(args) {
   assert(st.code === 0 && /this machine:/.test(st.out) && /example\.app/.test(st.out) && /missing/.test(st.out), 'status reports the machine + zone token state:\n' + st.out);
   console.log('OK: name status — machine address, zones, token state');
 
+  // 5 — live DNS read-back (the diagnose chain): getRecord reports the zone's truth
+  const readStub = http.createServer((req, res) => {
+    if (req.method === 'GET' && /\/missing\/AAAA\//.test(req.url)) {
+      res.writeHead(404, { 'content-type': 'application/json' }); res.end('{}'); return;
+    }
+    if (req.method === 'GET' && /\/live\/AAAA\//.test(req.url)) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ records: ['2a00:ffff::1'] })); return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}');
+  });
+  await new Promise((r) => readStub.listen(0, '127.0.0.1', r));
+  const readApi = 'http://127.0.0.1:' + readStub.address().port;
+  const prov = require('../acme.js').providers.desec;
+  const got404 = await prov.getRecord({ token: 't', zone: 'example.app', subname: 'missing', type: 'AAAA', fetchImpl: (u, o) => fetch(readApi + new URL(u).pathname, o) });
+  assert(got404.exists === false, 'getRecord reports a missing rrset honestly');
+  const gotLive = await prov.getRecord({ token: 't', zone: 'example.app', subname: 'live', type: 'AAAA', fetchImpl: (u, o) => fetch(readApi + new URL(u).pathname, o) });
+  assert(gotLive.exists === true && gotLive.values.includes('2a00:ffff::1'), 'getRecord returns the live values');
+  readStub.close();
+  console.log('OK: dns read-back (getRecord) — 404 + live values');
+
   stub.close();
   console.log('\nALL NAME OFFICE TESTS PASSED');
 })().catch((err) => {

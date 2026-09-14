@@ -102,6 +102,27 @@ async function httpOk(port) {
   assert(/up\s+opapp/.test(listOut) && /up\s+safep/.test(listOut), 'list shows both apps up:\n' + listOut);
   console.log('OK: gitlive up — one command recovers the whole machine after a reboot');
 
+  // ── 4) OWNER INTENT: a stopped app must never be "repaired" by a helper ──
+  // A stopped app and a crashed app look identical on disk (no pid). v4 writes
+  // the intent, so the agents can tell them apart instead of fighting the owner.
+  cli(['stop', 'opapp'], plainProj);
+  const intentFile = path.join(runPath, 'intent.json');
+  assert(fs.existsSync(intentFile), 'stopping an app records the owner\'s intent next to it');
+  const intent = JSON.parse(fs.readFileSync(intentFile, 'utf8'));
+  assert(intent.stopped === true && intent.at, 'the intent says stopped, with a timestamp: ' + JSON.stringify(intent));
+  // and it reaches the API the agents and the dashboard read (HOME is set
+  // before the require because the module resolves ~/.gitlive once, at load)
+  process.env.HOME = home;
+  const gl = require(path.join(__dirname, '..', 'gitlive.js'));
+  const row = gl.listAppsData().find((a) => a.name === 'opapp');
+  assert(row && row.stoppedByOwner === true, 'the app reports stoppedByOwner so no agent restarts it: ' + JSON.stringify(row));
+  cli(['restart', 'opapp'], plainProj);
+  const cleared = JSON.parse(fs.readFileSync(intentFile, 'utf8'));
+  assert(cleared.stopped === false, 'starting the app clears the intent');
+  const row2 = gl.listAppsData().find((a) => a.name === 'opapp');
+  assert(row2 && row2.stoppedByOwner === false && row2.alive === true, 'and the app is up and no longer marked as deliberately stopped');
+  console.log('OK: owner intent — a deliberate stop is recorded, visible, and cleared by a restart');
+
   console.log('\nALL OPS RELIABILITY TESTS PASSED');
 })().catch((err) => {
   console.error('OPS TEST FAILED:', (err && err.message) || err);

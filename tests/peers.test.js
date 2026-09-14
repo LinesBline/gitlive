@@ -117,13 +117,18 @@ function startPeer(home, port) {
   // poll to stability: the announce is persisted sync BEFORE the response,
   // but under battery load a list can land on the in-flight write — a dup
   // is structurally impossible (nodeId-keyed store), a transient 0 is not.
+  // count ROWS, not string occurrences: the printed node id is `node-<fp>` and
+  // a fingerprint starting with "a" makes a naive /node-a/g count 2 for a
+  // single healthy row. That turned a 1-in-16 chance into a "known flake"
+  // for months — the assertion was wrong, not the store.
+  const rowsForA = (out) => out.split('\n').filter((l) => /(^|\s)node-a(\s|$)/.test(l)).length;
   let listAfter = '';
   for (let i = 0; i < 10; i++) {
     listAfter = cli(['peer', 'list'], homeB);
-    if ((listAfter.match(/node-a/g) || []).length === 1) break;
+    if (rowsForA(listAfter) === 1) break;
     await new Promise((r) => setTimeout(r, 150));
   }
-  assert((listAfter.match(/node-a/g) || []).length === 1, 're-announce does not duplicate the peer row (stable):\n' + listAfter);
+  assert(rowsForA(listAfter) === 1, 're-announce does not duplicate the peer row (stable):\n' + listAfter);
   console.log('OK: node keys 0600 and stable; re-announce is idempotent');
 
   // 5 — onboarding loop (item 6): owner invites, a fresh node JOINS over the

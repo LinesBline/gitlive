@@ -12,7 +12,7 @@ const { execSync, spawnSync, execFileSync } = require('child_process');
 const readline = require('readline/promises');
 const { stdin: input, stdout: output } = require('process');
 
-const VERSION = '2.6.2';
+const VERSION = '4.0.1';
 
 const HOME_DIR = path.join(os.homedir(), '.gitlive');
 const APPS_DIR = path.join(HOME_DIR, 'apps');
@@ -219,6 +219,7 @@ echo ${JSON.stringify(docker)} > "$TARGET/mode"
 echo "[$(date +%Y-%m-%dT%H:%M:%S%z)] containers started (${docker})" >> "$LOG"
 node "$GITLIVE_FILE" _record-deploy ${JSON.stringify(name)} success "$(git --git-dir="$BARE" rev-parse HEAD | cut -c1-12)" "" "$CLOSURE_SHA" >> "$LOG" 2>&1 || true
 node "$GITLIVE_FILE" _attest-deploy ${JSON.stringify(name)} >> "$LOG" 2>&1 || true
+node "$GITLIVE_FILE" _env-snapshot ${JSON.stringify(name)} "$(git --git-dir="$BARE" rev-parse HEAD)" "$OUTCOME" >> "$LOG" 2>&1 || true
 node "$GITLIVE_FILE" _deploy-tag ${JSON.stringify(name)} "$(git --git-dir="$BARE" rev-parse HEAD)" "$CLOSURE_SHA" success >> "$LOG" 2>&1 || true
 `;
 }
@@ -326,6 +327,7 @@ done
 echo "[$(date +%Y-%m-%dT%H:%M:%S%z)] liveness after start: $OUTCOME" >> "$LOG"
 node "$GITLIVE_FILE" _record-deploy ${JSON.stringify(name)} "$OUTCOME" "$(git --git-dir="$BARE" rev-parse HEAD | cut -c1-12)" "$REASON" "$CLOSURE_SHA" >> "$LOG" 2>&1 || true
 node "$GITLIVE_FILE" _attest-deploy ${JSON.stringify(name)} >> "$LOG" 2>&1 || true
+node "$GITLIVE_FILE" _env-snapshot ${JSON.stringify(name)} "$(git --git-dir="$BARE" rev-parse HEAD)" "$OUTCOME" >> "$LOG" 2>&1 || true
 node "$GITLIVE_FILE" _deploy-tag ${JSON.stringify(name)} "$(git --git-dir="$BARE" rev-parse HEAD)" "$CLOSURE_SHA" "$OUTCOME" >> "$LOG" 2>&1 || true
 node "$GITLIVE_FILE" _publish-dns ${JSON.stringify(name)} >> "$LOG" 2>&1 || true
 if [ "$OUTCOME" = "failed" ]; then echo "gitlive: deploy FAILED — the app exited within 6s of start (see the deploy log)" >&2; exit 1; fi
@@ -497,6 +499,7 @@ if [ "$OK" = "1" ]; then
   fi
   node "$GITLIVE_FILE" _record-deploy "$APP_NAME" success "$COMMIT" "" "$CLOSURE_SHA" >> "$LOG" 2>&1
   node "$GITLIVE_FILE" _attest-deploy "$APP_NAME" >> "$LOG" 2>&1 || true
+  node "$GITLIVE_FILE" _env-snapshot "$APP_NAME" "$COMMIT" success >> "$LOG" 2>&1 || true
   node "$GITLIVE_FILE" _deploy-tag "$APP_NAME" "$COMMIT" "$CLOSURE_SHA" success >> "$LOG" 2>&1 || true
   node "$GITLIVE_FILE" _publish-dns "$APP_NAME" >> "$LOG" 2>&1 || true
   echo "[$(date +%Y-%m-%dT%H:%M:%S%z)] deploy succeeded (commit $COMMIT)" >> "$LOG"
@@ -584,6 +587,7 @@ if [ "$OK" = "1" ]; then
   docker compose -p "$OLD_PROJ" down >> "$LOG" 2>&1
   node "$GITLIVE_FILE" _record-deploy "$APP_NAME" success "$COMMIT" "" "$CLOSURE_SHA" >> "$LOG" 2>&1
   node "$GITLIVE_FILE" _attest-deploy "$APP_NAME" >> "$LOG" 2>&1 || true
+  node "$GITLIVE_FILE" _env-snapshot "$APP_NAME" "$COMMIT" success >> "$LOG" 2>&1 || true
   node "$GITLIVE_FILE" _deploy-tag "$APP_NAME" "$COMMIT" "$CLOSURE_SHA" success >> "$LOG" 2>&1 || true
   node "$GITLIVE_FILE" _publish-dns "$APP_NAME" >> "$LOG" 2>&1 || true
   echo "[$(date +%Y-%m-%dT%H:%M:%S%z)] deploy succeeded (commit $COMMIT)" >> "$LOG"
@@ -925,6 +929,7 @@ const HOOK_CAPABILITIES = [
   ['_attest-deploy', 'attestation fan-out to mesh members'],
   ['_deploy-tag', 'owner-signed deploy tags (history as signed git refs)'],
   ['_record-deploy', 'deploy history recording'],
+  ['_env-snapshot', 'env snapshot per deploy (rollback restores code AND variables)'],
 ];
 
 function hookCapabilities(text) {
@@ -1662,6 +1667,39 @@ function checkDomainArrival(domain) {
 // the borrowed label answering until the zone operator drops it (their
 // wildcard is theirs to manage — gitlive never touches it).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// data-level graduation — the same steps as `gitlive domain graduate`,
+// without the console: the dashboard's graduate button runs THIS.
+// ---------------------------------------------------------------------------
+function graduateAppData(appName, domain, opts) {
+  opts = opts || {};
+  domain = String(domain || '').toLowerCase().trim();
+  if (!appName || !domain) throw new Error('usage: graduate <app> --domain <your.domain>');
+  const reg = loadRegistry();
+  const app = reg[appName];
+  if (!app) throw new Error('No app named "' + appName + '"');
+  if (!validPublicDomain(domain)) throw new Error('the domain must be one you own (not *.gitlive), e.g. myapp.example.com');
+  for (const [other, a] of Object.entries(reg)) {
+    if (other !== appName && Array.isArray(a.domains) && a.domains.includes(domain)) {
+      throw new Error(domain + ' is already attached to "' + other + '"');
+    }
+  }
+  app.domains = Array.from(new Set([...(app.domains || []), domain]));
+  app.primaryDomain = domain;
+  app.graduatedAt = new Date().toISOString();
+  const zones = loadZones();
+  const fromZone = String(opts.from || '').toLowerCase() || Object.keys(zones)[0] || '';
+  if (fromZone && zones[fromZone]) app.graduatedFrom = fromZone;
+  saveRegistry(reg);
+  return {
+    ok: true,
+    app: appName,
+    domain,
+    graduatedFrom: app.graduatedFrom || null,
+    note: 'yours now — point the domain at this machine (or your entry node) at YOUR registrar',
+  };
+}
+
 function cmdDomainGraduate(positional, flags) {
   const appName = positional[1];
   const domain = String(flags.domain || '').toLowerCase();
@@ -1783,7 +1821,7 @@ function listAppsData() {
       const pid = fs.existsSync(pidFile) ? fs.readFileSync(pidFile, 'utf8').trim() : null;
       alive = Boolean(pid && isAlive(pid));
     }
-    return { name, alive, connect: false, safe: Boolean(app.safe), port: app.port || null, cwd: app.cwd };
+    return { name, alive, connect: false, safe: Boolean(app.safe), port: app.port || null, cwd: app.cwd, stoppedByOwner: !alive && appIntent(app).stopped === true, stoppedAt: !alive && appIntent(app).stopped ? appIntent(app).at : null };
   });
 }
 
@@ -1903,7 +1941,19 @@ function getLogsData(name) {
   const app = getApp(reg, name);
   const logPath = path.join(app.runPath, 'deploy.log');
   if (!fs.existsSync(logPath)) return { exists: false, text: '', logPath };
-  return { exists: true, text: fs.readFileSync(logPath, 'utf8'), logPath };
+  // retention: when the app set a cap, keep only the most recent half —
+  // the old tail is less useful than the fresh lines (disk-full protection)
+  const capBytes = Number(app.logMaxMb || 0) * 1024 * 1024;
+  if (capBytes > 0) {
+    try {
+      const st = fs.statSync(logPath);
+      if (st.size > capBytes) {
+        const buf = fs.readFileSync(logPath);
+        fs.writeFileSync(logPath, buf.slice(Math.floor(buf.length / 2)));
+      }
+    } catch { /* pruning must never break reading */ }
+  }
+  return { exists: true, text: fs.readFileSync(logPath, 'utf8'), logPath, capBytes: capBytes || null, bytes: fs.statSync(logPath).size };
 }
 
 function cmdLogs(name, follow) {
@@ -1962,9 +2012,24 @@ function startDockerApp(app, name) {
   return dockerAppUp(app, name);
 }
 
+// OWNER INTENT. A stopped app and a crashed app look identical on disk (no
+// pid), and a helper agent that cannot tell them apart will keep "repairing"
+// something the owner deliberately turned off. Stopping writes the intent;
+// starting/deploying clears it; the agents read it before they touch anything.
+function intentPath(app) { return path.join(app.runPath, 'intent.json'); }
+function setAppIntent(app, stopped, by) {
+  try {
+    fs.writeFileSync(intentPath(app), JSON.stringify({ stopped: Boolean(stopped), by: by || 'owner', at: new Date().toISOString() }, null, 2));
+  } catch { /* intent is best-effort: absence means "no deliberate stop on record" */ }
+}
+function appIntent(app) {
+  try { return JSON.parse(fs.readFileSync(intentPath(app), 'utf8')); } catch { return { stopped: false }; }
+}
+
 function stopAppData(name) {
   const reg = loadRegistry();
   const app = getApp(reg, name);
+  setAppIntent(app, true, 'owner');
   const results = [];
   if (app.docker && app.safe) {
     // docker blue-green (#4): down both compose slot projects + the proxy
@@ -1998,6 +2063,7 @@ function stopAppData(name) {
 // start a plain-mode app's process from its run dir (same idiom as the
 // generated post-receive hook: env + setsid/perl + pid file + log line).
 function startPlainAppProcess(app, logPath) {
+  setAppIntent(app, false, 'start');
   const live = path.join(app.runPath, 'live');
   const dataDir = path.join(app.runPath, 'data');
   fs.mkdirSync(live, { recursive: true });
@@ -2761,15 +2827,34 @@ function rollbackAppData(name) {
     return { ok: false, reason: 'No earlier successful deploy on record to roll back to.' };
   }
   const target = successes[successes.length - 2]; // most recent success before the current one
+  // the env pair: capture the env THAT COMMIT ran with BEFORE the rollback
+  // re-deploys it (the hook would otherwise re-snapshot today's env under
+  // the old commit); restore it after the swap succeeds — code AND variables
+  // roll back together, never half a rollback.
+  const snapFile = path.join(app.runPath, 'env-snapshots', String(target.commit).slice(0, 12) + '.env');
+  let envRestored = false, envNote = null;
+  if (!fs.existsSync(snapFile)) envNote = 'no env snapshot for that deploy — the current env stays';
   // Force-push the old commit back onto main in gitlive's own internal bare repo — this
   // re-runs the normal --safe deploy machinery (health check, blue-green flip) against the
   // known-good commit, rather than reinventing the deploy path. Only rewinds gitlive's
   // private deploy remote, not the user's own branch history in app.cwd.
   const result = spawnSync('git', ['push', name, `${target.commit}:main`, '--force'], { cwd: app.cwd, encoding: 'utf8' });
   const output = `${result.stdout || ''}${result.stderr || ''}`;
+  const ok = result.status === 0 && /live and healthy/.test(output);
+  if (ok && fs.existsSync(snapFile)) {
+    try {
+      fs.copyFileSync(snapFile, secretsPath(name));
+      fs.chmodSync(secretsPath(name), 0o600);
+      envRestored = true;
+    } catch (err) {
+      envNote = 'env restore failed: ' + (err.message || String(err));
+    }
+  }
   return {
-    ok: result.status === 0 && /live and healthy/.test(output),
+    ok,
     targetCommit: target.commit,
+    envRestored,
+    envNote,
     exitCode: result.status,
     output,
   };
@@ -3289,6 +3374,21 @@ const USAGE_TEXT = `gitlive — turn any git repo into a live process with "git 
                             list / --remove <domain>. gitlive never runs a naming zone
   gitlive audit [dir]      readiness front door (WORKFLOW P1): stack, start cmd,
                             PORT-from-env, health, lockfile, secret/node_modules hygiene
+  gitlive intel            what this machine knows about itself: health score with every
+                            factor shown, insights with their evidence, per-app reliability
+                            (measured from the 1-minute health history — gaps are gaps)
+  gitlive report           the digest: availability, incidents, deploys, backups, what the
+                            helper agents did — markdown, so it can be pasted or filed.
+                            Identifiers are MASKED by default (paths → ~, addresses →
+                            <address>, names → app-N) so the copy is safe to post anywhere;
+                            --no-redact prints the full one for your own eyes
+                            flags: --days <n> (default 7) --out <file> [--no-redact]
+  gitlive timeline [app]   the merged story (deploys, backups, agent actions, audit events,
+                            jobs), newest first — flags: --days <n> --limit <n> --kind <k>
+  gitlive policy           what the helper agents may do, per app:
+                            policy show | set <app> --mode off|watch|repair
+                              [--max-per-hour N] [--maintenance 22:00-06:00[@0,6]]
+                            | clear <app> | default --mode <m> --max-per-hour N
   gitlive doctor           diagnose "which gitlive is actually running" / install drift;
                             --integrity [--write] verifies/regenerates the file-hash manifest
   gitlive backend start [name...]  start the optional backend daemon (shared auth/data/storage)
@@ -3350,6 +3450,159 @@ function helpSection(cmd) {
   return lines.slice(starts[k].i, end).join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// v4 · the intelligence layer in the terminal
+// ---------------------------------------------------------------------------
+// The dashboard is not the only way in: every number the cockpit shows can be
+// printed, piped and diffed from a terminal, because a report you cannot grep
+// is a report you cannot audit.
+
+function intelModule() { return require('./control/intel.js'); }
+
+function cmdIntel() {
+  const intel = intelModule();
+  const facts = {
+    apps: Object.keys(loadRegistry()),
+    integrityOk: (() => { try { return integrityCheck().ok === true; } catch { return null; } })(),
+    certs: (() => { try { return require('./control/server.js').certsOverview ? require('./control/server.js').certsOverview() : []; } catch { return []; } })(),
+    version: VERSION,
+  };
+  try {
+    const df = require('node:child_process').execFileSync('df', ['-k', os.homedir()], { encoding: 'utf8', timeout: 3000 }).trim().split('\n')[1];
+    if (df) {
+      const p = df.split(/\s+/);
+      facts.diskTotalMb = Math.round(Number(p[1]) / 1024);
+      facts.diskFreeMb = Math.round(Number(p[3]) / 1024);
+    }
+  } catch { /* honest nulls */ }
+  const o = intel.intelOverview(facts);
+  console.log(`gitlive ${VERSION} — what this machine knows about itself\n`);
+  const bar = (pct) => {
+    if (pct == null) return '   n/a';
+    const filled = Math.round((pct / 100) * 20);
+    return String(pct).padStart(5) + '% ' + '█'.repeat(filled) + '·'.repeat(20 - filled);
+  };
+  console.log(`health score: ${o.score.score == null ? 'unknown' : o.score.score + '/100'} (${o.score.band})`);
+  console.log(`  ${o.score.formula}`);
+  for (const f of o.score.factors) console.log(`  ${bar(f.pct)}  ${f.label.padEnd(24)} ${f.detail}`);
+  if (o.score.excluded.length) console.log(`  excluded (no data, weight redistributed): ${o.score.excluded.join(', ')}`);
+  console.log('');
+  if (!o.insights.length) console.log('insights: nothing worth flagging — every detector stayed quiet.');
+  else {
+    console.log(`insights (${o.insights.length}):`);
+    for (const i of o.insights) {
+      console.log(`  [${i.severity}] ${i.title}`);
+      console.log(`         ${i.detail}`);
+      const ev = Object.entries(i.evidence || {}).filter(([, v]) => v != null).map(([k, v]) => k + '=' + v).join(' ');
+      console.log(`         evidence: ${ev}${i.samples ? ` · samples=${i.samples}` : ''}`);
+    }
+  }
+  console.log('\nper app:');
+  for (const a of o.apps) {
+    const r = a.reliability;
+    console.log(`  ${a.name.padEnd(16)} ${r.insufficient ? 'not enough samples yet' : r.uptimePct + '% up (7d)'} · ${r.samples} samples · ${r.failures} outage(s)${r.longestOutageMs ? ' · longest ' + intel.fmtDur(r.longestOutageMs) : ''}${r.mttrMs ? ' · mttr ' + intel.fmtDur(r.mttrMs) : ''}`);
+  }
+}
+
+function cmdReport(argv) {
+  const intel = intelModule();
+  const { flags } = parseFlags(argv);
+  const days = Number(flags.days || 7);
+  // default = the shareable copy (identifiers masked). --no-redact prints the
+  // full one for the owner's own eyes, and the report says which it is.
+  const d = intel.digestData({ days, redact: flags.redact !== undefined ? String(flags.redact) !== '0' : !flags['no-redact'] });
+  if (flags.out) {
+    fs.writeFileSync(String(flags.out), d.markdown);
+    console.log(`report written to ${flags.out} (${days} day window)`);
+  } else {
+    console.log(d.markdown);
+  }
+}
+
+function cmdTimeline(argv) {
+  const intel = intelModule();
+  const { flags, positional } = parseFlags(argv);
+  const app = positional[0] || null;
+  const rows = intel.timelineFor({
+    app,
+    sinceMs: Number(flags.days || 7) * 86400000,
+    limit: Number(flags.limit || 60),
+    kinds: flags.kind ? String(flags.kind).split(',') : null,
+  });
+  if (!rows.length) { console.log('nothing on the timeline for that window.'); return; }
+  for (const r of rows) {
+    const when = r.at.replace('T', ' ').slice(0, 19);
+    console.log(`${when}  ${String(r.severity).padEnd(5)} ${String(r.kind).padEnd(15)} ${r.title}${r.detail ? '\n' + ' '.repeat(28) + r.detail.slice(0, 160) : ''}`);
+  }
+}
+
+function cmdPolicy(argv) {
+  const intel = intelModule();
+  const { flags, positional } = parseFlags(argv);
+  const [sub, target] = positional;
+  const current = intel.loadPolicies();
+  if (!sub || sub === 'show') {
+    console.log(`default policy: ${JSON.stringify(current.default)}`);
+    const names = Object.keys(current.apps);
+    if (!names.length) console.log('no per-app overrides — every app follows the default.');
+    for (const n of names) console.log(`  ${n}: ${JSON.stringify(intel.policyFor(n, current))}`);
+    console.log('\nmodes: off (hands off) · watch (diagnose + recommend only) · repair (restart, verified)');
+    console.log('backoff after failed repairs: ' + intel.BACKOFF_MS.map((ms) => intel.fmtDur(ms)).join(' → '));
+    return;
+  }
+  if (sub === 'clear' && target) {
+    const next = { default: current.default, apps: { ...current.apps } };
+    delete next.apps[target];
+    intel.savePolicies(next);
+    console.log(`${target} now follows the default policy.`);
+    return;
+  }
+  if (sub === 'default') {
+    const next = { default: { ...current.default }, apps: current.apps };
+    if (flags.mode) next.default.mode = String(flags.mode);
+    if (flags.notify !== undefined) next.default.notify = String(flags.notify) !== '0';
+    if (flags['max-per-hour']) next.default.maxActionsPerHour = Number(flags['max-per-hour']);
+    if (flags.mode && !intel.POLICY_MODES.includes(next.default.mode)) {
+      console.error(`mode must be one of ${intel.POLICY_MODES.join(', ')}`);
+      process.exitCode = 1;
+      return;
+    }
+    intel.savePolicies(next);
+    console.log(`default policy: ${JSON.stringify(intel.loadPolicies().default)}`);
+    return;
+  }
+  if (sub === 'set' && target) {
+    if (!loadRegistry()[target]) { console.error(`No app named "${target}"`); process.exitCode = 1; return; }
+    const policy = { ...(current.apps[target] || {}) };
+    if (flags.mode) {
+      if (!intel.POLICY_MODES.includes(String(flags.mode))) { console.error(`mode must be one of ${intel.POLICY_MODES.join(', ')}`); process.exitCode = 1; return; }
+      policy.mode = String(flags.mode);
+    }
+    if (flags['max-per-hour']) policy.maxActionsPerHour = Number(flags['max-per-hour']);
+    if (flags.notify !== undefined) policy.notify = String(flags.notify) !== '0';
+    if (flags.maintenance) {
+      // "22:00-06:00" or "22:00-06:00@1,2,3" (days 0=Sunday)
+      const [range, daysSpec] = String(flags.maintenance).split('@');
+      const [from, to] = range.split('-');
+      if (!/^\d{2}:\d{2}$/.test(from || '') || !/^\d{2}:\d{2}$/.test(to || '')) {
+        console.error('--maintenance wants HH:MM-HH:MM (optionally @0,1,2 for days, 0=Sunday)');
+        process.exitCode = 1;
+        return;
+      }
+      const days = daysSpec ? daysSpec.split(',').map(Number).filter((n) => n >= 0 && n <= 6) : [];
+      policy.maintenance = [...(policy.maintenance || []), { from, to, ...(days.length ? { days } : {}) }];
+    }
+    if (flags['clear-maintenance']) policy.maintenance = [];
+    intel.savePolicies({ default: current.default, apps: { ...current.apps, [target]: policy } });
+    console.log(`${target}: ${JSON.stringify(intel.policyFor(target))}`);
+    return;
+  }
+  console.log('Usage: gitlive policy [show]');
+  console.log('       gitlive policy set <app> --mode off|watch|repair [--max-per-hour N] [--maintenance 22:00-06:00[@0,6]] [--clear-maintenance]');
+  console.log('       gitlive policy clear <app>');
+  console.log('       gitlive policy default --mode off|watch|repair [--max-per-hour N]');
+}
+
 async function main() {
   const [, , cmd, ...rest] = process.argv;
   // --help / -h anywhere after the command must print help and exit — never
@@ -3388,6 +3641,10 @@ async function main() {
     case 'rollback': cmdRollback(rest[0]); break;
     case 'rm': await cmdRm(rest[0], flags); break;
     case 'doctor': cmdDoctor(); break;
+    case 'intel': cmdIntel(); break;
+    case 'report': cmdReport(rest); break;
+    case 'timeline': cmdTimeline(rest); break;
+    case 'policy': cmdPolicy(rest); break;
     case 'audit': cmdAudit(rest); break;
     case 'receipts': cmdReceipts(rest[0]); break;
     case 'hook-regen': cmdHookRegen(rest); break;
@@ -3666,6 +3923,32 @@ async function main() {
       const reg = loadRegistry();
       const app = reg[appName];
       if (app) appendHistory(app.runPath, { outcome, commit, reason: reason || undefined, closure: closure || undefined });
+      // v4: a new commit is new code, so the intelligence layer's backoff for
+      // this app is no longer evidence about anything — clear it, and record
+      // the deploy as a timeline event in its own right
+      try {
+        const intel = require('./control/intel.js');
+        intel.clearBackoff(appName);
+        require('./crypt.js').logEvent('deploy', { app: appName, outcome, commit: commit ? String(commit).slice(0, 12) : null, reason: reason || null });
+      } catch { /* the deploy itself must never depend on this */ }
+      break;
+    }
+    case '_env-snapshot': {
+      // the rollback pair: every successful deploy snapshots the env its
+      // commit ran with (first-write-wins per commit) so a rollback can
+      // restore code AND variables together — never half a rollback.
+      const [appName, commit, outcome] = rest;
+      if (outcome !== 'success' || !commit) break;
+      const app = loadRegistry()[appName];
+      if (!app) break;
+      const snapDir = path.join(app.runPath, 'env-snapshots');
+      const snapFile = path.join(snapDir, String(commit).slice(0, 12) + '.env');
+      if (fs.existsSync(snapFile)) break; // the commit keeps its first env
+      const src = secretsPath(appName);
+      if (!fs.existsSync(src)) break;
+      fs.mkdirSync(snapDir, { recursive: true });
+      fs.copyFileSync(src, snapFile);
+      fs.chmodSync(snapFile, 0o600);
       break;
     }
     case '_publish-dns': {
@@ -3708,7 +3991,7 @@ module.exports = {
   // pure data functions — used directly by mcp/server.js (in-process require,
   // must never console.log or it corrupts the MCP stdio JSON-RPC channel)
   // and now also by backend.js (loadRegistry, isAlive, startBackgroundNode).
-  VERSION, loadRegistry, saveRegistry, isAlive, getApp,
+  VERSION, loadRegistry, saveRegistry, isAlive, getApp, appIntent, setAppIntent,
   integrityWrite, integrityCheck, integrityFileList, INTEGRITY_ROOT,
   listAppsData, getStatusData, getLogsData, getDoctorData, stopAppData,
   deployAppData, rollbackAppData, restartAppData, startBackgroundNode, APPS_DIR, HOME_DIR,  parseDeployTags,
@@ -3721,6 +4004,7 @@ module.exports = {
   domainNames, applyHosts, hostsBlock, startDomainGateway, stopDomainGateway,
   gatewayAlive, loadZones, saveZones, domainTlsPaths, ensureLocalCA,
   issueServerCert, trustCommand, domainPublicData, upData, poolAdmissionData, poolListData, publishAppDns, publicIpv6,
+  issueCertFor, graduateAppData,
 };
 
 if (require.main === module) {

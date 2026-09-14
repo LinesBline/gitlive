@@ -1,6 +1,204 @@
 # Changelog
 
+## 4.0.1 — what leaves this machine, and in what shape
+
+An audit of every path by which information leaves the plane. Four real leaks
+were confirmed with evidence, and each one is now closed by construction rather
+than by remembering to be careful.
+
+### Confirmed and fixed
+- **The weekly report carried the owner's home layout.** It quoted the helper
+  agents' ledger, which stores an app's failure line verbatim — and that line
+  was `spawn /Users/<name>/.gitlive/apps/<app>-run/live/…`. A document meant to
+  be pasted anywhere published the username, the project folder and the app
+  name (14 times, in the sample). The report is now **masked by default**
+  (paths → `~`, addresses → `<address>`, e-mails → `<email>`, app and domain
+  names → `app-1`, `domain-1`) and says which copy it is at the top;
+  `gitlive report --no-redact` prints the full one for the owner's own eyes.
+- **The support bundle did the same, plus more.** "Copy this and send it to a
+  helper" included `/Users/<name>/Desktop/<private project>`, the machine's
+  **public IPv6 address**, every app name and raw event details. Masked by
+  default now; a second click within five seconds copies the full one, the
+  toast says which one you just put on the clipboard, and the payload itself
+  carries `redacted: true|false` with a note.
+- **Credentials could reach a ledger, a report or an error message.** An app
+  that fails while printing its own environment (a connection string, a token
+  in a command line) had that text written into `agent-actions.jsonl` and then
+  quoted onward. `control/redact.js` now strips key blocks, `KEY=value`
+  assignments whose name says credential, URL userinfo, `Authorization`
+  headers, CLI `--token/--password` arguments, query-string credentials, JWTs
+  and known key prefixes (`ghp_`, `sk-`, `AKIA`, `xox*`, …) — **before the
+  receipt is written**, at the digest source, in every timeline detail, and at
+  one central boundary for every error response the plane produces.
+- **No content-security policy.** The dashboard is same-origin with inline
+  scripts and the session token in `localStorage`, so a single injected string
+  would have been a stolen session with nothing standing in the way. Every
+  response now carries a CSP (`default-src 'self'`, `frame-ancestors 'none'`,
+  `object-src 'none'`, `base-uri 'none'`, `form-action 'none'`, no third-party
+  anything), plus `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy`,
+  `Cross-Origin-Resource-Policy` and a `Permissions-Policy` that switches off
+  camera, microphone, geolocation, payment and USB.
+
+### Advanced
+- **Outbound is switchable.** Two things called out on their own (the npm
+  version check and the public-repo check). `GITLIVE_OFFLINE=1` turns them
+  off, the version endpoint reports `offline: true` and stops pretending to
+  know the registry, and nothing else on the machine calls anywhere except
+  where the owner explicitly asks (publishing a name, requesting a
+  certificate, joining a mesh).
+- **`tests/leak.test.js`** — a ninth-block permanent suite that runs a real
+  plane over real HTTP against a fake `$HOME` and pins seven boundaries:
+  credentials die in the redactor (and ordinary text survives untouched: clock
+  times, versions and loopback are not mangled), the ledger/report/timeline
+  carry no credential, the dashboard is served with a CSP and refuses framing,
+  the bundle and report are masked by default with an explicit full copy, the
+  access log records method + path + status and **never a query string**, error
+  responses keep the paths an owner needs while stripping the credentials they
+  must never see, `GITLIVE_OFFLINE=1` really stops the call-outs, and **no file
+  that npm ships carries a marker of this machine** — the shipped list comes
+  from `npm pack --dry-run`, so widening `files` widens the check.
+
+### Deliberate, and now stated
+- **Secrets are always stripped; identifiers are masked only in artifacts meant
+  to leave the machine.** An error message the owner reads on their own screen
+  keeps `/Users/<name>/typo` (they need it to fix the typo); the moment the
+  same facts go into a bundle or a report, the path becomes `~`.
+- `/api/events` still returns raw audit detail to an authenticated session.
+  That is the owner's own machine and the dashboard already redacts app names
+  for display in the machine area; masking the API itself would take away the
+  detail the owner opened it for.
+
+## 4.0.0 — the plane that knows itself
+
+The number finally matches the product. Everything below shipped after 2.6.2
+without a version to show for it, so this release numbers the whole arc and
+adds the part that was missing: a machine that MEASURES itself, DETECTS what
+its own numbers mean, and EXPLAINS it in the owner's language.
+
+### Intelligence (new: `control/intel.js`)
+- **Reliability per app, from the real health series.** Uptime over covered
+  time (not over wall-clock), every outage with its duration — including one
+  that is still happening, counted up to now — longest outage, MTBF/MTTR,
+  transitions and current streak. A gap in the meter (machine asleep, plane
+  restarted) is recorded as UNKNOWN time and never as uptime; coverage is
+  printed next to every percentage; fewer than five samples refuses to be a
+  rate at all. A meter that has gone silent says so: the last reading being
+  "down" is history, not a claim about now.
+- **A daily roll-up** (`health-daily.jsonl`, one line per day per app) because
+  the raw series is pruned at 5,000 lines: 30-day numbers are now possible, and
+  they say they are an aggregate.
+- **A rule-of-three floor** beside any perfect score: 1,440 clean samples
+  cannot prove 100%, so the honest 95% floor (99.8%) is printed with it.
+- **Deterministic detectors, with evidence and minimum sample counts:**
+  flapping (transitions the machine did NOT cause — deploys and deliberate
+  restarts are excluded, so the app is never blamed for our own actions);
+  time-of-day clustering (binomial tail, needs 5+ failures and p<0.05, and
+  says which window); resource trends (least squares with a significance test —
+  a memory leak reports its doubling time, a shrinking disk forecasts the day
+  it hits the floor); a failing deploy streak; a stale or never-verified
+  backup; certificate expiry with a lead time proportional to the
+  certificate's own lifetime (14–30 days, because CA lifetimes are shrinking
+  toward 47 days); **the outage that started minutes after a deploy — with the
+  commit hash and a rollback action**; and the app a restart could not fix,
+  quoting the app's own error line.
+- **One 0-100 health score whose factors are always shown.** Every factor
+  carries its weight, its raw value and its sample count; a factor with no data
+  is EXCLUDED and its weight redistributed, never scored as zero. "Up right
+  now" is its own factor, so a good week cannot hide an app that is down this
+  minute.
+- **A timeline merged from every ledger already on disk** — deploys with their
+  outcome and reason, backups, agent actions, jobs, audit events — de-duplicated
+  (one deploy = one line even though two ledgers record it), with job start/end
+  rows merged and app attribution resolved. Per app on its card; the machine's
+  own machinery in the machine area (a project's name belongs in projects).
+- **Policies the owner sets, per app:** `off` (hands off) · `watch` (diagnose
+  and recommend only) · `repair` (restart, verified), plus maintenance windows
+  (midnight-wrapping, day-filtered) and an hourly action limit.
+- **Adaptive backoff with escalation:** after a repair that could not be
+  verified the wait is 5m → 15m → 1h → 6h with ±10% jitter, cleared by a
+  verified repair, by a new deploy, or by six hours of uptime; from the third
+  consecutive failure the receipt says a human is needed instead of retrying.
+- **Owner intent is recorded.** A stopped app and a crashed app look identical
+  on disk, so `gitlive stop` now writes the intent next to the app, the status
+  API reports `stoppedByOwner`, and the helper agents hold instead of
+  restarting something the owner deliberately turned off.
+- **The weekly report** (`gitlive report`, or ⧉ weekly report in the cockpit):
+  availability per project, every incident with its duration, deploys, backup
+  state, what the helpers did — markdown, with the file each number came from.
+  Quoted log lines are sanitized, so an app cannot inject structure into it.
+
+### Two rules the live probe enforced
+- **The machine score never prints an app's name** (two-area law): its factor
+  details say "1 of 2 app(s) down — the longest for 4h 3m", and the names live
+  on the projects board where they belong. The test asserts it.
+- **An aggregate that covers a fraction of a window cannot answer the whole
+  window:** ten recorded days do not make a 30-day rate, so the roll-up result
+  is marked insufficient and the UI prints its note instead of a number.
+
+### Surfaces
+- New **Intelligence** section in the machine area: score with its factor
+  breakdown, machine findings, the machine timeline with kind filters, and the
+  weekly-report button — plus a guide that states the honesty rules outright.
+- The projects board carries the findings that name a project, and each app's
+  card gained **reliability**, **agent policy** (mode, hourly limit,
+  maintenance window) and **its own timeline**.
+- CLI: `gitlive intel`, `gitlive report [--days N] [--out file]`,
+  `gitlive timeline [app]`, `gitlive policy …`.
+- A **what's-new** panel on first open of 4.0: a release this size should not
+  be a secret.
+
+### Numbering the rest (what shipped after 2.6.2 without a version)
+- **3.0 — the member mesh:** federation protocol, peers/nodes, the entry and
+  its outbound relay, storage shares, replication and mesh recovery.
+- **3.x — the name office and the front door:** zones, per-zone wildcard ACME,
+  publish/graduate, the admission exam and the pool, boot recovery.
+- **3.x — the self-sufficient cockpit:** node checkup with one fix per row, the
+  per-app diagnose chain with a live DNS read-back, env manager, backups with
+  restore drills and a job ledger, schedule, guarded self-update, support
+  bundle, in-app guides.
+- **3.x — the helper agents:** repair (verified), diagnose, improve.
+
+### 2.6.2-era detail that shipped unnumbered
+- `GET /health` without a session, request ids, a rotating access log, a clean
+  SIGTERM drain, `gitlive backup state` (secrets excluded by design), restic
+  resolution that survives a reboot's PATH, automatic maintenance snapshots,
+  webhook replay guard, non-loopback bind refusal, serve.log rotation.
+- The dashboard can now **create an app** (＋ new project): a folder picker with
+  stack detection that runs the same `gitlive init` the CLI runs and shows its
+  output verbatim. Graduating a borrowed label to your own domain was fixed
+  (its route was implemented but missing from the action regex, and the
+  contract suite was blind to it in two independent ways — both closed).
+
 ## 2.6.2 — public launch (npm + GitHub)
+
+### Operability (audited against the Node.js backend references)
+- `GET /health` — unauthenticated liveness answering status only.
+- Request ids on every response + a rotating access log (never bodies or secrets).
+- Graceful SIGTERM/SIGINT drain: timers cleared, in-flight finished, exit 0.
+- `gitlive backup state` — the control plane's own memory (registry, session db,
+  audit log) with an explicit exclusion list: DNS tokens, key material and the
+  backup key never enter a snapshot.
+
+### The self-sufficient cockpit
+- Node checkup: the machine checks itself (install link, integrity, apps,
+  supervisor, gateway, IPv6, zones, certs, backups, update) — one honest
+  fix per row.
+- Diagnose chain per app: process → port → health → names → live DNS
+  read-back (deSEC), each hop with one fix.
+- Env manager: set/delete keys from the app detail; values are written,
+  never returned, and a banner tracks the pending restart.
+- Backups: run / restic check / restore drills with a job ledger
+  (running → done/failed); rollback restores code AND the env its commit
+  ran with.
+- Naming & certs: deSEC setup wizard, per-zone wildcard ACME, cert
+  days-left visibility, DNS write receipts, graduation from the card.
+- Scheduled tasks: per-app cron run by the plane's ticker, receipted in
+  jobs + events.
+- Self-update: semver-honest (never offers a downgrade), changelog modal,
+  refuses without a backup, restarts through the boot agent.
+- In-app knowledge: every section carries a guide with copyable commands;
+  a support bundle button copies machine facts (never secrets).
+
 - First public release: gitlive@2.6.2 on the npm registry and the public
   repo at github.com/LinesBline/gitlive (owner-clean single-commit
   snapshots, AGPL-3.0-or-later). No platform deployment anywhere — npm
@@ -16,6 +214,67 @@
   (containers, headless boxes): --no-open is actually honored, and a
   missing `open` binary is a no-op instead of a crash.
 - Homebrew formula carries the real registry tarball sha.
+
+## Unreleased — helper agents + the last terminal-only step
+- A repair is now VERIFIED before it is called done. The restart call returning
+  used to be enough to write "done ✓"; a live app whose start command dies
+  instantly (missing interpreter, crash on boot) was reported as repaired while
+  staying down — observed on the live plane, where a restart "succeeded" and
+  the app never came up. The pass now waits for the app to actually answer,
+  settles past the spawn (a pidfile appears before a process can die), then
+  records `verified` honestly and carries the app's own last error line on the
+  receipt (stack frames filtered out), which the agents card shows under the
+  row. A restart the agent could not verify also becomes a `cannot-start`
+  recommendation quoting that line: the machine says out loud that restarting
+  will not fix this one.
+- **Helper agents inside the plane** (`control/agents.js`): deterministic, no
+  LLM, no network, no keys. *repair* restarts an app that went down (the SAME
+  restart the button performs, at most `GITLIVE_AGENT_MAX_ACTIONS` per pass
+  with a per-app cooldown so a crash loop is never hammered), *diagnose* runs
+  the full hop chain the moment an app flips down and records the reason even
+  if nobody was watching, *improve* reads restarts-per-hour, deploy-failure
+  streaks, backup age and disk headroom and writes RECOMMENDATIONS only —
+  judgement stays with the owner. Every action lands in
+  `~/.gitlive/control/agent-actions.jsonl` and in the audit ledger; the
+  dashboard has an agents card (status, cadence, ledger, recommendations,
+  "run a pass now") and a guide. `GITLIVE_AGENTS=0` switches them off.
+- **Create an app from the dashboard.** ＋ new project → pick a folder (a
+  read-only picker listing directories, with the stack gitlive detects in
+  each) → name, start/install/build commands and port are prefilled from that
+  detection → create. The plane shells the SAME `gitlive init` the CLI runs
+  with cwd set to the chosen folder and returns its output verbatim, so the
+  receipt on screen is the real one; the bare repo, deploy hook, registry row
+  and git remote are all created by that one command, never by a second
+  implementation. A name collision asks before re-pointing; a refused create
+  leaves no repo and no registry row (proven in `tests/create-app.test.js`,
+  which drives the real HTTP surface and a real `gitlive init` child).
+- Expired dashboard sessions are pruned at boot and hourly (they were only
+  deleted when their own token came back, so the live plane had quietly
+  collected 23 dead rows). Live sessions are never touched, and the prune is
+  receipted in the audit ledger.
+- `tests/ui-probe.js` — a dependency-free CDP driver for verifying the REAL
+  dashboard in a REAL browser (computed styles, click paths, console errors,
+  phone-width layout). It mints a throwaway session row in the plane's own
+  database, deletes it on the way out, and prints a JSON verdict, so "it looks
+  right in the code" stops being the standard of proof.
+- `GET /api/browse` — read-only folder listing for that picker: directories
+  only, hidden folders and gitlive's own working folder excluded, per-folder
+  stack/`git` hints, behind the session gate.
+- **A registered app that has never been pushed now reads "not deployed yet"**
+  (violet pill) instead of "offline" — the old wording alarmed the owner about
+  an app that was never broken. Same fact on the board: the hero counts
+  "awaiting first push" separately from "offline".
+- Fixed: **graduating a borrowed label to your own domain 404'd.** The
+  `/api/apps/<name>/graduate` action was implemented and wired to the button,
+  but missing from the server's app-action route regex. The contract suite
+  could not see it either — it only recognised api.call paths whose literal
+  began at the quote, so paths BUILT from pieces were invisible, and it read
+  route regexes with `/p\.match\([^)]*\)/`, which stops at the first `)` —
+  inside `([^/]+)` — so the app-action alternation was never actually checked.
+  Both holes are closed: the suite now assembles every quoted fragment of
+  every URL expression (interpolations become a placeholder) and requires the
+  action segment to resolve, and it fails loudly if the route-regex extraction
+  finds no alternation at all.
 
 ## Unreleased — verified restores (post-roadmap #7: backups PROVEN to restore)
 - `gitlive backup verify [app]` — the restore drill: restores the newest

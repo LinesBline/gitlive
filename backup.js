@@ -34,7 +34,24 @@ const { spawnSync } = require('child_process');
 const HOME_DIR = path.join(os.homedir(), '.gitlive');
 const REPO_DEFAULT = path.join(HOME_DIR, 'backup-repo');
 const KEY_DEFAULT = path.join(HOME_DIR, 'backup.key');
-const RESTIC = process.env.GITLIVE_RESTIC || 'restic';
+// restic must be findable from a LAUNCHD context too: the boot agent starts the
+// plane with a minimal PATH, so a plain 'restic' would vanish after a reboot
+// even though the same command works in a terminal. Resolution order matters:
+//   1. an explicit GITLIVE_RESTIC override (tests, custom installs) always wins
+//   2. PATH — what the user configured (this is also the test seam)
+//   3. the usual package-manager prefixes, for the launchd case
+function resolveRestic() {
+  if (process.env.GITLIVE_RESTIC) return process.env.GITLIVE_RESTIC;
+  for (const dir of String(process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+    const candidate = path.join(dir, 'restic');
+    try { if (fs.existsSync(candidate)) return candidate; } catch { /* keep looking */ }
+  }
+  for (const candidate of ['/opt/homebrew/bin/restic', '/usr/local/bin/restic', '/usr/bin/restic']) {
+    try { if (fs.existsSync(candidate)) return candidate; } catch { /* keep looking */ }
+  }
+  return 'restic'; // resticOk() reports honestly when it is genuinely absent
+}
+const RESTIC = resolveRestic();
 
 function sh(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { encoding: 'utf8', timeout: opts.timeout || 300000, ...opts });
@@ -82,6 +99,71 @@ function writeReceipt(app, entry) {
   const histPath = path.join(app.runPath, 'backup-history.jsonl');
   fs.appendFileSync(histPath, JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n');
   try { require('./crypt.js').logEvent('backup', { app: entry.app, snapshot: entry.snapshot, bytes: entry.bytes || null }); } catch { /* audit must never mask the backup */ }
+}
+
+// ── the plane's own state ────────────────────────────────────────────────
+// Apps had receipts; the CONTROL PLANE did not — losing apps.json, the
+// session db or the audit log meant losing the machine's memory while every
+// app's data was safe. This backs that state up under its own tag.
+//
+// SECRETS ARE EXCLUDED ON PURPOSE, and the receipt says so: zone DNS tokens
+// (zones.json), key material (*.key, *.pem) and the backup key itself never
+// enter a snapshot. A restore therefore needs the owner to re-add a DNS
+// token — re-typing one secret is a better failure mode than a backup repo
+// that carries every secret it protects.
+function statePaths() {
+  const control = path.join(HOME_DIR, 'control');
+  const domain = path.join(HOME_DIR, 'domain');
+  const include = [];
+  const push = (p, what) => { if (fs.existsSync(p)) include.push({ path: p, what }); };
+  push(path.join(HOME_DIR, 'apps.json'), 'app registry');
+  push(path.join(HOME_DIR, 'events.log'), 'audit log');
+  push(path.join(control, 'app.db'), 'control db (users + session hashes)');
+  push(path.join(control, 'jobs.jsonl'), 'job ledger');
+  push(path.join(domain, 'zones.list'), 'zone names (tokens excluded)');
+  const excluded = ['zones.json (DNS tokens)', '*.key / *.pem (key material)', 'backup.key (the backup password)'];
+  // zone NAMES only — the token is the secret
+  try {
+    const zones = require('./gitlive.js').loadZones();
+    const names = Object.keys(zones || {});
+    if (names.length) {
+      const tmp = path.join(control, 'zones.list');
+      fs.mkdirSync(control, { recursive: true });
+      fs.writeFileSync(tmp, names.join('\n') + '\n');
+      push(tmp, 'zone names');
+    }
+  } catch { /* zones optional */ }
+  return { include, excluded };
+}
+
+function cmdBackupState(flags) {
+  const repo = String(flags.repo || REPO_DEFAULT);
+  const key = String(flags['password-file'] || KEY_DEFAULT);
+  if (!resticOk()) throw new Error('restic is not installed — brew install restic (or apt install restic), then re-run.');
+  if (!fs.existsSync(path.join(repo, 'config'))) throw new Error(`no backup repo at ${repo} — run: gitlive backup init`);
+  const { include, excluded } = statePaths();
+  if (!include.length) throw new Error('no control-plane state found to back up (nothing at ~/.gitlive yet).');
+  const args = ['backup', ...include.map((f) => f.path), '--tag', 'gitlive:state', '-r', repo, '--password-file', key, '--quiet'];
+  const r = sh(RESTIC, args);
+  if (r.status !== 0) {
+    const tail = ((r.stderr || '') + (r.stdout || '')).trim().split('\n').pop();
+    throw new Error('state backup failed: ' + (tail || 'restic error'));
+  }
+  const snaps = snapshots({ backupRepo: repo, backupPasswordFile: key }, 'gitlive:state').slice(-1);
+  const latestId = snappedId(snaps);
+  // receipt next to the control state, so the dashboard's backups row sees it
+  const histPath = path.join(HOME_DIR, 'control', 'backup-history.jsonl');
+  fs.mkdirSync(path.dirname(histPath), { recursive: true });
+  fs.appendFileSync(histPath, JSON.stringify({ at: new Date().toISOString(), app: 'control-plane', snapshot: latestId, source: include.map((f) => f.what).join(' + '), excluded }) + '\n');
+  try { require('./crypt.js').logEvent('backup', { app: 'control-plane', snapshot: latestId, bytes: null }); } catch { /* audit best-effort */ }
+  console.log(`backed up control-plane state: snapshot ${latestId} → ${repo}`);
+  console.log(`  included: ${include.map((f) => f.what).join(', ')}`);
+  console.log(`  EXCLUDED (secrets, on purpose): ${excluded.join(', ')}`);
+  console.log(`  a restore needs you to re-add a zone DNS token — re-typing one secret beats a repo that carries every secret`);
+}
+
+function snappedId(snaps) {
+  return (snaps && snaps.length && (snaps[0].short_id || snaps[0].id)) || '(newest)';
 }
 
 function cmdBackupInit(flags) {
@@ -254,6 +336,7 @@ function cmdBackup(rest) {
   const sub = rest[0];
   const flags = (() => { try { return require('./gitlive.js').parseFlags(rest.slice(1)).flags; } catch { return {}; } })();
   if (sub === 'init') { cmdBackupInit(flags); return; }
+  if (sub === 'state') { cmdBackupState(flags); return; }
   if (sub === 'check') { cmdBackupCheck(); return; }
   if (sub === 'verify') { cmdBackupVerify(rest[1]); return; }
   if (sub === 'list') { cmdBackupList(rest[1]); return; }
@@ -262,6 +345,7 @@ function cmdBackup(rest) {
   console.error('Usage: gitlive backup init            create the encrypted backup repo (restic, your disk)');
   console.error('       gitlive backup <app>           snapshot that app\'s data + deploy history, receipted');
   console.error('       gitlive backup list [app]      what is backed up, newest first');
+  console.error('       gitlive backup state           snapshot the CONTROL PLANE\'s own state (registry, session db, audit log — secrets excluded)');
   console.error('       gitlive backup check           verify the repo (restic check) — a backup that can\'t be verified is a wish');
   console.error('       gitlive backup verify [app]    restore drill: restores the newest snapshot to a throwaway dir,');
   console.error('                                       compares every file byte-for-byte, receipts the outcome — a backup');

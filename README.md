@@ -78,16 +78,67 @@ machine instead.
 **7 — see it, operate it, protect it:**
 
 ```
-gitlive open               # dashboard: theater, logs, restart, rollback
+gitlive open               # the cockpit: checkup, diagnose, env, backups, certs, schedules
+gitlive backup state       # the plane's own memory (registry, session db, audit log — secrets excluded)
 gitlive status myapp       # what's running, from where, since when
 gitlive crypt              # encrypt data at rest; split keys N-of-T
 ```
+
+The plane itself is operable, not a black box: `GET /health` answers status
+without a session, every request gets an id plus one line in
+`~/.gitlive/control/access.log` (rotating, never bodies or secrets), and
+SIGTERM drains cleanly — timers cleared, in-flight requests finished.
+
+The dashboard is a self-sufficient cockpit: a node checkup with one fix per
+row, a per-app diagnose chain (process → port → health → names → public DNS),
+an env manager (values written, never read back), backups with restore
+drills and a job ledger, certificate expiry visibility, scheduled tasks,
+helper agents (repair / diagnose / improve — bounded, receipted, and off with
+`GITLIVE_AGENTS=0`), and a guarded self-update. Registering a project no
+longer needs a terminal either: **＋ new project** picks a folder, detects the
+stack, and runs the same `gitlive init` the CLI runs — its output is shown
+verbatim. Each section carries its own guide with copyable commands.
+
+**What leaves the machine, and in what shape.** Credentials never survive a
+ledger, a log, an error message or a report: a redactor strips key blocks,
+`KEY=value` assignments whose name says credential, URL userinfo, `Authorization`
+headers, CLI `--token/--password` arguments, query-string tokens, JWTs and known
+key prefixes. The two artifacts whose whole purpose is to be handed to somebody
+else — the **support bundle** and the **weekly report** — mask identifiers by
+default (paths → `~`, addresses → `<address>`, e-mails → `<email>`, app and
+domain names → `app-1`) and say which copy they are; the unmasked version is one
+explicit click (or `gitlive report --no-redact`) away, for your own eyes. The
+dashboard is served with a content-security policy, refuses to be framed, and
+carries no third-party anything. Two check-ups call out on their own (npm's
+version, the public repo's head) and `GITLIVE_OFFLINE=1` switches them off.
+
+It also **measures itself**. From its own ledgers — the 1-minute health
+history, deploy and backup receipts, the agent ledger, the audit log — the
+plane computes per-app uptime over real covered time (a gap in the meter is
+unknown time, never uptime), every outage with its duration, MTBF/MTTR, and a
+0-100 health score whose factors, weights and sample counts are always shown.
+Deterministic detectors flag what the numbers actually say: a crash loop, a
+failure pattern clustered in a time-of-day window, a memory leak with a
+doubling time, a disk forecast to hit its floor, a failing deploy streak, a
+stale backup, a certificate inside its renewal window — and the outage that
+started four minutes after a deploy, with the commit hash and a rollback
+action. Policies decide what the helper agents may do per project (`off`,
+`watch`, `repair`) with maintenance windows and an adaptive backoff, and the
+whole story is one command away: `gitlive intel`, `gitlive report`,
+`gitlive timeline`, `gitlive policy`. Nothing leaves the machine, and there is
+no model in the loop: every claim prints the evidence it was computed from.
 
 That is the whole product for a user: **push → live on my hardware, with
 auth, database, and storage built in — no platform in the middle.**
 
 ---
 
+> **v4.0.1** — leak audit: masked shareable artifacts, a credential redactor at
+> every boundary, a CSP on the dashboard, and an offline switch.
+> **v4.0.0** — the plane that knows itself: measured reliability, deterministic
+> insights, a visible health score, an auditable timeline, and agent policies
+> with adaptive backoff. **v3.0** — the member mesh (federation, entry/relay,
+> shares), the name office, and the self-sufficient cockpit.
 > **v2.6.1** — private build: audit command + workflow docs. **v2.6.0** —
 > the ten-item hardening program: key rotation, owner-key storage policy,
 > outbound-only relay, mesh recover, `doctor --integrity`, the audit-card

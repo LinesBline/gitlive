@@ -132,7 +132,7 @@ function withFakeGithub(opts, run) {
   });
 }
 
-const CFG = { owner: 'bline', repo: 'gitlive-hello', token: 'fake-token', branch: 'main' };
+const CFG = { owner: 'example-owner', repo: 'gitlive-hello', token: 'fake-token', branch: 'main' };
 
 (async () => {
   // -------------------------------------------------------------------
@@ -216,30 +216,30 @@ const CFG = { owner: 'bline', repo: 'gitlive-hello', token: 'fake-token', branch
   await withFakeGithub({}, async () => {
     const ctx = github.openApp({ ...CFG, dataPrefix: '_gitlive' });
 
-    const created = await github.auth.createUser(ctx, { email: 'Bline@Example.com', password: 'hunter2' });
-    assert.equal(created.email, 'bline@example.com', 'email is normalized to lowercase, matching the SQLite mode');
+    const created = await github.auth.createUser(ctx, { email: 'User@Example.com', password: 'hunter2' });
+    assert.equal(created.email, 'user@example.com', 'email is normalized to lowercase, matching the SQLite mode');
     assert.equal(created.id, created.email, 'id === email is the deliberate cross-mode createSession(user.id) trick');
     console.log('OK: auth.createUser normalizes email and returns an id createSession can use directly');
 
     let conflict = null;
     try {
-      await github.auth.createUser(ctx, { email: 'bline@example.com', password: 'anything' });
+      await github.auth.createUser(ctx, { email: 'user@example.com', password: 'anything' });
     } catch (err) {
       conflict = err;
     }
     assert.ok(conflict && conflict.code === 'CONFLICT', 'signing up the same email twice is a CONFLICT');
     console.log('OK: duplicate signup is rejected as CONFLICT (real GitHub sha-concurrency guard underneath)');
 
-    const badLogin = await github.auth.verifyPassword(ctx, { email: 'bline@example.com', password: 'wrong' });
+    const badLogin = await github.auth.verifyPassword(ctx, { email: 'user@example.com', password: 'wrong' });
     assert.equal(badLogin, null, 'wrong password returns null, not a throw');
-    const goodLogin = await github.auth.verifyPassword(ctx, { email: 'bline@example.com', password: 'hunter2' });
-    assert.ok(goodLogin && goodLogin.id === 'bline@example.com', 'correct password returns the user');
+    const goodLogin = await github.auth.verifyPassword(ctx, { email: 'user@example.com', password: 'hunter2' });
+    assert.ok(goodLogin && goodLogin.id === 'user@example.com', 'correct password returns the user');
     console.log('OK: verifyPassword round-trips a real scrypt hash (shared with the SQLite mode via index.js)');
 
     const session = await github.auth.createSession(ctx, goodLogin.id);
     assert.ok(session.token && session.expiresAt, 'createSession returns a real token');
     const verified = await github.auth.verifySession(ctx, session.token);
-    assert.equal(verified.email, 'bline@example.com', 'verifySession resolves the token back to the user');
+    assert.equal(verified.email, 'user@example.com', 'verifySession resolves the token back to the user');
     console.log('OK: session create/verify round-trip works');
 
     assert.equal(await github.auth.verifySession(ctx, 'not-a-real-token'), null, 'a bogus token verifies to null');
